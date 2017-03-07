@@ -282,7 +282,7 @@ local reader = setmetatable(
 			then
 				return
 			end
-			local justname, justpass = self.result.gamename:match('"(.-)"\9"(.-)"')
+			local justname, justpass = self.result.gamename:match('"(.-)"\t"(.-)"')
 			t_session:append_text((" name: %q pass: %q"):format(justname, justpass))
 			t_session:set_len(self.position - position)
 			local count = self:dword()
@@ -650,7 +650,7 @@ Cossacks3.dissector = function (range, pinfo, tree)
 	local id_to = r_id_to:le_uint()
 	local to = ( id_to == 0 and "ALL" or ( client_names[id_to] or "?") )
 	
-	pinfo.cols.info = ("%-22s [%5s => %5s] "):format(command_name, id_from, id_to)
+	pinfo.cols.info = ("%-28s [%6s => %6s] "):format(command_name, id_from, id_to)
 	tree = tree:add(Cossacks3, range(), ("Cossacks 3, %s, From: %s, To: %s"):format(command_name, from, to))
 	tree:add(r_length, "Payload length: " .. length)
 	tree:add(Cossacks3.fields.code, r_command, command)

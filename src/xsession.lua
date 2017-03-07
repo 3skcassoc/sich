@@ -23,7 +23,7 @@ xsession = xclass
 		self.max_players = request.max_players
 		self.password = request.password
 		self.gamename = request.gamename
-		self.justname, self.justpass = self.gamename:match('"(.-)"\9"(.-)"')
+		self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
 		self.mapname = request.mapname
 		self.money = request.money
 		self.fog_of_war = request.fog_of_war
@@ -207,7 +207,7 @@ xsession = xclass
 	update = function (self, remote, request)
 		remote.log("debug", "updating room: %s", self.justname)
 		self.gamename = request.gamename
-		self.justname, self.justpass = self.gamename:match('"(.-)"\9"(.-)"')
+		self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
 		self.mapname = request.mapname
 		self.money = request.money
 		self.fog_of_war = request.fog_of_war
@@ -263,6 +263,6 @@ xsession = xclass
 			:write_object(client, "44",
 				"id",
 				"score")
-			:broadcast()
+			:broadcast(remote)
 	end,
 }
