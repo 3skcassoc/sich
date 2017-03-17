@@ -173,8 +173,13 @@ cores["1.0.0.7"] = xclass
 	
 	[xcmd.SERVER_GET_TOP_USERS] = function (self, remote, request)
 		remote.log("debug", "get top users")
+		local count = request.count
 		local response = xpackage(xcmd.USER_GET_TOP_USERS, 0, 0)
 		for _, client in pairs(self.clients) do
+			if count == 0 then
+				break
+			end
+			count = count - 1
 			response
 				:write_byte(1)
 				:write_object(client, "ss4448",
