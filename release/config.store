@@ -28,4 +28,25 @@ return {
 		output = io.output(),
 		-- output = assert(io.open("/var/log/sich.log", "wb"))
 	},
+	
+	hardlink = nil,
+	--[[ hardlink = {
+		mode = nil, -- "server", "client"
+		server = {
+			host = "*",
+			port = 42634,
+		},
+		client = {
+			host = "192.168.1.1",
+			port = 42634,
+			["dynamic"] = {
+				-- [host:]port
+				"1080",
+			},
+			["local"] = {
+				-- [[[lhost:]lport:]rhost:]rport
+				"31523",
+			},
+		},
+	}, ]]
 }

@@ -54,11 +54,7 @@ xparser = xclass
 		if not log:check("debug") then
 			return
 		end
-		if not subnode then
-			log("debug", "PARSER: key = %q, value = %q", self.key, self.value)
-		else
-			log("debug", "key = %q, value = %q", self.key, self.value)
-		end
+		log("debug", "%skey = %q, value = %q", (subnode and "" or "PARSER: "), self.key, self.value)
 		log:inc()
 		for _, node in ipairs(self.nodes) do
 			node:dump(true)

@@ -1,22 +1,5 @@
-local file = assert(io.open("./VERSION"))
-local VERSION = file:read("*a"):match("^%s*(.-)%s*$")
-file:close()
-print(VERSION)
-
-local release = assert(io.open("./release/sich.lua", "wb"))
-release:write(
-	"--\n",
-	"-- Sich\n",
-	"-- Cossacks 3 lua server\n",
-	"--\n",
-	"\n",
-	'VERSION = "' .. VERSION .. '"\n',
-	"\n")
-
-local done = {}
-
-local function include(name)
-	if done[name] then
+local function include(self, name)
+	if self.done[name] then
 		return
 	end
 	local unit = assert(io.open("./src/" .. name .. ".lua", "rb"))
@@ -28,26 +11,51 @@ local function include(name)
 		end
 		local req = line:match("^require.-(%w+).-$")
 		if req then
-			include(req)
+			include(self, req)
 		elseif not line:match("^%s*$") then
 			if not do_end then
 				do_end = true
 				print("including " .. name)
-				release:write(
+				self.file:write(
 					"-- // " .. name .. " // --\n",
 					"do\n")
 			end
-			release:write("\t" .. line .. "\n")
+			self.file:write("\t" .. line .. "\n")
 		end
 	end
 	unit:close()
 	if do_end then
-		release:write("end\n")
+		self.file:write("end\n")
 	end
-	release:write("\n")
-	done[name] = true
+	self.file:write("\n")
+	self.done[name] = true
 end
 
-include("sich")
-release:close()
+local function release(name, head)
+	print("assembling " .. name)
+	local file = assert(io.open("./release/" .. name .. ".lua", "wb"))
+	if head then
+		file:write(table.concat(head, "\n"), "\n")
+	end
+	include({done = {}, file = file}, name)
+	file:close()
+end
+
+local file = assert(io.open("./VERSION"))
+local VERSION = file:read("*a"):match("^%s*(.-)%s*$")
+file:close()
+print(VERSION)
+
+release("sich", {
+	"--",
+	"-- Sich",
+	"-- Cossacks 3 lua server",
+	"--",
+	"",
+	'VERSION = "' .. VERSION .. '"',
+	"",
+})
+
+release("hardlink")
+
 print("done")

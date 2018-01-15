@@ -3,7 +3,7 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.1.1"
+VERSION = "Sich v0.1.3"
 
 -- // xstore // --
 do
@@ -322,11 +322,7 @@ do
 			if not log:check("debug") then
 				return
 			end
-			if not subnode then
-				log("debug", "PARSER: key = %q, value = %q", self.key, self.value)
-			else
-				log("debug", "key = %q, value = %q", self.key, self.value)
-			end
+			log("debug", "%skey = %q, value = %q", (subnode and "" or "PARSER: "), self.key, self.value)
 			log:inc()
 			for _, node in ipairs(self.nodes) do
 				node:dump(true)
@@ -336,10 +332,10 @@ do
 	}
 end
 
--- // xpackage // --
+-- // xpack // --
 do
-	local log = xlog("xpackage")
-	local custom_package custom_package = xclass
+	local log = xlog("xpack")
+	xpack = xclass
 	{
 		__create = function (self, buffer, position)
 			self.buffer = buffer or {}
@@ -464,7 +460,7 @@ do
 			if buffer == nil then
 				return nil
 			end
-			return xparser:read(custom_package(buffer))
+			return xparser:read(xpack(buffer))
 		end,
 		write_buffer = function (self, buffer)
 			table.insert(self.buffer, buffer)
@@ -538,17 +534,22 @@ do
 			return parser:write(self)
 		end,
 		write_parser_with_size = function (self, parser)
-			local buffer = custom_package()
+			local buffer = xpack()
 				:write_parser(parser)
 				:get_buffer()
 			return self:write_long_string(buffer)
 		end,
 	}
+end
+
+-- // xpackage // --
+do
+	local log = xlog("xpackage")
 	xpackage = xclass
 	{
-		__parent = custom_package,
+		__parent = xpack,
 		__create = function (self, code, id_from, id_to, buffer)
-			self = custom_package.__create(self, buffer)
+			self = xpack.__create(self, buffer)
 			self.code = assert(code, "no code")
 			self.id_from = assert(id_from, "no id_from")
 			self.id_to = assert(id_to, "no id_to")
@@ -560,7 +561,7 @@ do
 				return nil
 			end
 			local payload_length, code, id_from, id_to =
-				custom_package(head):read("4244")
+				xpack(head):read("4244")
 			local payload = socket:receive(payload_length)
 			if not payload then
 				return nil
@@ -569,7 +570,7 @@ do
 		end,
 		get = function (self)
 			local payload = self:get_buffer()
-			return custom_package()
+			return xpack()
 				:write_array("4244", {#payload, self.code, self.id_from, self.id_to})
 				:write_buffer(payload)
 				:get_buffer()
@@ -1212,6 +1213,10 @@ do
 			self.password = request.password
 			self.gamename = request.gamename
 			self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
+			if not self.justname then
+				self.justname = "QuickPlay"
+				self.justpass = ""
+			end
 			self.mapname = request.mapname
 			self.money = request.money
 			self.fog_of_war = request.fog_of_war
@@ -1309,7 +1314,7 @@ do
 				for _, client in pairs(self.clients) do
 					leave_client(client)
 				end
-				log("debug", "destroying room: %s", self.justname)
+				remote.log("debug", "destroying room: %s", self.justname)
 				remote.server.sessions[remote.id] = nil
 			else
 				response
@@ -1377,6 +1382,10 @@ do
 			remote.log("debug", "updating room: %s", self.justname)
 			self.gamename = request.gamename
 			self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
+			if not self.justname then
+				self.justname = "QuickPlay"
+				self.justpass = ""
+			end
 			self.mapname = request.mapname
 			self.money = request.money
 			self.fog_of_war = request.fog_of_war
@@ -1384,10 +1393,8 @@ do
 			return self:info(remote)
 		end,
 		client_update = function (self, remote, request)
-			remote.log("info", "updating clients team: %d", request.team)
-			for _, client in pairs(self.clients) do
-				client.team = request.team
-			end
+			remote.log("info", "updating client team: %d", request.team)
+			remote.team = request.team
 			return xpackage(xcmd.USER_SESSION_CLIENT_UPDATE, remote.id, 0)
 				:write_byte(remote.team)
 				:broadcast(remote)
@@ -1494,7 +1501,7 @@ do
 			if remote.session.master == remote then
 				return true
 			end
-			log("debug", "remote is not session master")
+			remote.log("debug", "remote is not session master")
 			return false
 		end,
 		session_action = function (self, action, remote, request)
@@ -1556,7 +1563,7 @@ do
 			return self:master_session_action("update", remote, request)
 		end,
 		[xcmd.SERVER_SESSION_CLIENT_UPDATE] = function (self, remote, request)
-			return self:master_session_action("client_update", remote, request)
+			return self:session_action("client_update", remote, request)
 		end,
 		[xcmd.SERVER_VERSION_INFO] = function (self, remote, request)
 			return xpackage(xcmd.USER_VERSION_INFO, 0, 0)
@@ -1650,11 +1657,11 @@ do
 				return 3
 			end
 			if not cores[request.vcore] then
-				-- 4 data version is outdated
+				-- 4 core version is outdated
 				remote.log("warn", "requested unknown core version: %s", request.vcore)
 			end
 			if not datas[request.vdata] then
-				-- 5 core version is outdated
+				-- 5 data version is outdated
 				remote.log("debug", "requested unknown data version: %s", request.vdata)
 			end
 			if request.code == xcmd.SERVER_REGISTER then
@@ -1775,8 +1782,8 @@ do
 			local code = packet.code
 			local session = remote.session
 			if 0x0190 <= code and code <= 0x01F4 then
-				packet:dump_head()
 				if code ~= xcmd.SERVER_SESSION_PARSER then
+					packet:dump_head()
 					remote.server:process(remote, packet)
 				elseif session then
 					packet.code = xcmd.USER_SESSION_PARSER
@@ -1800,6 +1807,7 @@ do
 		end
 		remote.server:disconnected(remote)
 		remote.log("info", "disconnected")
+		socket:close()
 	end
 end
 
@@ -1809,9 +1817,25 @@ do
 	local log = xlog("xsocket")
 	local sendt = {}
 	local recvt = {}
-	local wrap = {}
+	local slept = {}
+	local wrapped = setmetatable({}, {__mode = "kv"})
 	local wrapper wrapper = setmetatable(
 	{
+		error = function (self, err)
+			if err ~= "closed" then
+				log("debug", "socket error: %s", err)
+			end
+			self.closed = true
+			return nil, err
+		end,
+		listen = function (self, backlog)
+			local ok, err = self.sock:listen(backlog)
+			if not ok then
+				return self:error(err)
+			end
+			self.closed = false
+			return true
+		end,
 		accept = function (self)
 			if self.closed then
 				return nil, "closed"
@@ -1821,11 +1845,41 @@ do
 				local client, err = self.sock:accept()
 				if client then
 					client:setoption("tcp-nodelay", true)
-					return wrapper(client)
+					return wrapper(client, false)
 				elseif err ~= "timeout" then
-					log("debug", "socket error: %s", err)
-					self.closed = true
-					return nil, err
+					return self:error(err)
+				end
+			end
+		end,
+		connect_unix = function (self, host, port)
+			while true do
+				local ok, err = self.sock:connect(host, port)
+				if ok or err == "already connected" then
+					self.closed = false
+					return true
+				elseif err == "timeout" or err == "Operation already in progress" then
+					coroutine.yield(self.sock, sendt)
+				else
+					return self:error(err)
+				end
+			end
+		end,
+		connect_windows = function (self, host, port)
+			local first_timeout = true
+			while true do
+				local ok, err = self.sock:connect(host, port)
+				if ok or err == "already connected" then
+					self.closed = false
+					return true
+				elseif err == "Operation already in progress" then
+					xsocket.sleep(0.1)
+				elseif err == "timeout" and first_timeout then
+					first_timeout = false
+					xsocket.sleep(0.1)
+				elseif err == "timeout" then
+					return self:error("connection refused")
+				else
+					return self:error(err)
 				end
 			end
 		end,
@@ -1833,74 +1887,70 @@ do
 			if self.closed then
 				return nil, "closed"
 			end
-			local pos = 1
-			while pos <= #data do
+			self.writebuf = self.writebuf .. data
+			while #self.writebuf > 0 do
 				coroutine.yield(self.sock, sendt)
-				local sent, err, last = self.sock:send(data, pos)
+				if #self.writebuf == 0 then
+					break
+				end
+				local sent, err, last = self.sock:send(self.writebuf)
 				if sent then
-					return true
+					self.writebuf = self.writebuf:sub(sent + 1)
 				elseif err == "timeout" then
-					pos = last + 1
+					self.writebuf = self.writebuf:sub(last + 1)
 				else
-					log("debug", "socket error: %s", err)
-					self.closed = true
-					return false
+					return self:error(err)
 				end
 			end
 			return true
-		end,
-		sendto = function (self, data, ip, port)
-			if self.closed then
-				return nil, "closed"
-			end
-			while true do
-				coroutine.yield(self.sock, sendt)
-				local ok, err = self.sock:sendto(data, ip, port)
-				if ok then
-					return ok
-				elseif err ~= "timeout" then
-					log("debug", "socket error: %s", err)
-					self.closed = true
-					return nil, err
-				end
-			end
 		end,
 		receive = function (self, size)
 			if self.closed then
 				return nil, "closed"
 			end
-			local buffer = { self.stored }
-			local buffer_size = #self.stored
-			while size > buffer_size do
+			local recv_size = size or 1
+			while #self.readbuf < recv_size do
 				coroutine.yield(self.sock, recvt)
-				local data, err, partial = self.sock:receive(32 * 1024)
-				if err == "timeout" then
-					data = partial
-				elseif not data then
-					log("debug", "socket error: %s", err)
-					self.closed = true
-					return nil, err
+				if #self.readbuf >= recv_size then
+					break
 				end
-				table.insert(buffer, data)
-				buffer_size = buffer_size + #data
+				local data, err, partial = self.sock:receive(32 * 1024)
+				if data then
+					self.readbuf = self.readbuf .. data
+				elseif err == "timeout" then
+					self.readbuf = self.readbuf .. partial
+				else
+					return self:error(err)
+				end
 			end
-			buffer = table.concat(buffer)
-			self.stored = buffer:sub(size + 1)
-			return buffer:sub(1, size)
+			local readbuf = self.readbuf
+			if size then
+				self.readbuf = readbuf:sub(size + 1)
+				return readbuf:sub(1, size)
+			else
+				self.readbuf = ""
+				return readbuf
+			end
+		end,
+		sendto = function (self, data, ip, port)
+			while true do
+				coroutine.yield(self.sock, sendt)
+				local ok, err = self.sock:sendto(data, ip, port)
+				if ok then
+					return true
+				elseif err ~= "timeout" then
+					return self:error(err)
+				end
+			end
 		end,
 		receivefrom = function (self)
-			if self.closed then
-				return nil, "closed"
-			end
 			while true do
 				coroutine.yield(self.sock, recvt)
 				local data, ip, port = self.sock:receivefrom()
 				if data then
 					return data, ip, port
 				elseif ip ~= "timeout" then
-					log("debug", "socket error: %s", ip)
-					self.closed = true
-					return nil, ip
+					return self:error(ip)
 				end
 			end
 		end,
@@ -1912,28 +1962,32 @@ do
 	},
 	{
 		__index = function (wrapper, name)
-			log("debug", "missing wrapper:%s()", name)
 			wrapper[name] = function (self, ...)
 				return self.sock[name](self.sock, ...)
 			end
 			return wrapper[name]
 		end,
-		__call = function (wrapper, sock)
-			log("debug", "socket created")
+		__call = function (wrapper, sock, closed)
 			sock:settimeout(0)
-			wrap[sock] =
+			wrapped[sock] =
 			{
 				sock = sock,
-				closed = false,
-				stored = "",
+				closed = closed,
+				readbuf = "",
+				writebuf = "",
 			}
-			return setmetatable(wrap[sock], wrapper.index_mt)
+			return setmetatable(wrapped[sock], wrapper.index_mt)
 		end,
 	})
 	wrapper.index_mt = {
 		__index = wrapper,
 	}
-	function append(thread, success, sock, set)
+	if package.config:sub(1, 1) == "\\" then
+		wrapper.connect = wrapper.connect_windows
+	else
+		wrapper.connect = wrapper.connect_unix
+	end
+	local function append(thread, success, sock, set)
 		if not success then
 			xsocket.threads = xsocket.threads - 1
 			log("error", "thread crashed: %s", sock)
@@ -1941,7 +1995,7 @@ do
 		end
 		if not sock then
 			xsocket.threads = xsocket.threads - 1
-			return log("debug", "thread stopped")
+			return
 		end
 		if set[sock] then
 			table.insert(set[sock].threads, 1, thread)
@@ -1957,7 +2011,7 @@ do
 			}
 		end
 	end
-	function resume(sock, set)
+	local function resume(sock, set)
 		local assoc = set[sock]
 		local thread = table.remove(assoc.threads)
 		if #assoc.threads == 0 then
@@ -1970,18 +2024,51 @@ do
 		end
 		return append(thread, coroutine.resume(thread))
 	end
+	local function rpairs(t)
+		local function rnext(t, k)
+			k = k - 1
+			if k > 0 then
+				return k, t[k]
+			end
+		end
+		return rnext, t, #t + 1
+	end
 	xsocket =
 	{
 		threads = 0,
 		tcp = function ()
-			local sock = socket.tcp()
-			sock:setoption("reuseaddr", true)
-			return wrapper(sock)
+			local sock, msg = socket.tcp()
+			if not sock then
+				return nil, msg
+			end
+			local ok, msg = sock:setoption("reuseaddr", true)
+			if not ok then
+				return nil, msg
+			end
+			return wrapper(sock, true)
 		end,
 		udp = function ()
-			local sock = socket.udp()
-			sock:setoption("reuseaddr", true)
-			return wrapper(sock)
+			local sock, msg = socket.udp()
+			if not sock then
+				return nil, msg
+			end
+			local ok, msg = sock:setoption("reuseaddr", true)
+			if not ok then
+				return nil, msg
+			end
+			return wrapper(sock, false)
+		end,
+		gettime = socket.gettime,
+		yield = function ()
+			coroutine.yield(0, slept)
+		end,
+		sleep = function (sec)
+			coroutine.yield(socket.gettime() + sec, slept)
+		end,
+		sleep_until = function (ts)
+			if ts > socket.gettime() then
+				coroutine.yield(ts, slept)
+			end
 		end,
 		spawn = function (func, ...)
 			local thread = coroutine.create(
@@ -1989,23 +2076,41 @@ do
 					func(...)
 					return nil, nil
 				end)
-			log("debug", "starting thread")
 			xsocket.threads = xsocket.threads + 1
 			return append(thread, coroutine.resume(thread, ...))
 		end,
 		loop = function ()
 			while true do
-				for _, sock in ipairs(recvt) do
-					if wrap[sock].closed then
+				for _, sock in rpairs(recvt) do
+					if wrapped[sock].closed then
 						resume(sock, recvt)
 					end
 				end
-				for _, sock in ipairs(sendt) do
-					if wrap[sock].closed then
+				for _, sock in rpairs(sendt) do
+					if wrapped[sock].closed then
 						resume(sock, sendt)
 					end
 				end
-				local read, write = socket.select(recvt, sendt)
+				if #slept > 0 then
+					local now = socket.gettime()
+					for _, ts in rpairs(slept) do
+						if ts <= now then
+							local assoc = slept[ts]
+							while #assoc.threads > 0 do
+								resume(ts, slept)
+							end
+						end
+					end
+				end
+				local timeout = nil
+				if #slept > 0 then
+					timeout = math.huge
+					for _, ts in rpairs(slept) do
+						timeout = math.min(timeout, ts)
+					end
+					timeout = math.max(0, timeout - socket.gettime())
+				end
+				local read, write = socket.select(recvt, sendt, timeout)
 				for _, sock in ipairs(read) do
 					resume(sock, recvt)
 				end
@@ -2020,269 +2125,272 @@ end
 -- // xadmin // --
 do
 	local log = xlog("xadmin")
+	local function find_user(who)
+		local id = tonumber(who)
+		for email, account in pairs(register) do
+			if email == who
+			or account.id == id
+			or account.nickname == who
+			then
+				return email, account.id
+			end
+		end
+		return nil, nil
+	end
+	local function find_remote(id)
+		for _, server in pairs(servers) do
+			for client_id, client in pairs(server.clients) do
+				if client_id == id then
+					return client
+				end
+			end
+		end
+		return nil
+	end
+	local table_head
+	local table_cols
+	local table_rows
+	local function table_begin(...)
+		table_head = {...}
+		table_cols = {}
+		table_rows = {}
+		for i, head in ipairs(table_head) do
+			table_cols[i] = #head
+		end
+	end
+	local function table_row(...)
+		local row = {}
+		for i, cell in ipairs {...} do
+			cell = tostring(cell)
+			row[i] = cell
+			if ( not table_cols[i] )
+			or ( table_cols[i] < #cell ) then
+				table_cols[i] = #cell
+			end
+		end
+		table_rows[#table_rows + 1] = row
+	end
+	local function table_end(socket)
+		local row_strips = {}
+		local row_format = {}
+		for _, col in ipairs(table_cols) do
+			table.insert(row_strips, ("-"):rep(col))
+			table.insert(row_format, "%-" .. col .. "s")
+		end
+		row_strips = "+-" .. table.concat(row_strips, "-+-") .. "-+\r\n"
+		row_format = "| " .. table.concat(row_format, " | ") .. " |\r\n"
+		local buffer = {}
+		table.insert(buffer, row_strips)
+		if #table_head > 0 then
+			table.insert(buffer, row_format:format(unpack(table_head)))
+			table.insert(buffer, row_strips)
+		end
+		for _, row in ipairs(table_rows) do
+			table.insert(buffer, row_format:format(unpack(row)))
+		end
+		table.insert(buffer, row_strips)
+		table_head = nil
+		table_cols = nil
+		table_rows = nil
+		return socket:send(table.concat(buffer))
+	end
+	local function writeln(socket, fmt, ...)
+		return socket:send((fmt .. "\r\n"):format(...))
+	end
+	local commands = {}
+	local function command(name, description, argc, handler)
+		local command =
+		{
+			name = name,
+			description = description,
+			argc = argc,
+			handler = handler,
+		}
+		commands[#commands + 1] = command
+		commands[name] = command
+	end
+	command("exit", "close this console", 0, function (socket)
+		return socket:close()
+	end)
+	command("info", "server info", 0, function (socket)
+		table_begin()
+		local users = 0
+		for _, account in pairs(register) do
+			if type(account) == "table" then
+				users = users + 1
+			end
+		end
+		table_row("registered users", users)
+		users = 0
+		for _, server in pairs(servers) do
+			for _ in pairs(server.clients) do
+				users = users + 1
+			end
+		end
+		table_row("online users", users)
+		table_row("running threads", xsocket.threads)
+		return table_end(socket)
+	end)
+	command("reg", "list registered users", 0, function (socket)
+		local byid = {}
+		for email, account in pairs(register) do
+			if type(account) == "table" then
+				byid[#byid + 1] = email:lower()
+			end
+		end
+		table.sort(byid, function (a, b) return register[a].id < register[b].id end)
+		table_begin("id", "email", "nickname", "password", "blocked")
+		for _, email in ipairs(byid) do
+			local account = register[email]
+			table_row(account.id, email, account.nickname, account.password, tostring(account.blocked))
+		end
+		return table_end(socket)
+	end)
+	command("users", "list online users", 0, function (socket)
+		table_begin("vcore/vdata", "id", "nickname", "session", "state")
+		for client in pairs(auth_server.clients) do
+			table_row("", "", client.host .. ":" .. client.port, "", "auth")
+		end
+		for tag, server in pairs(servers) do
+			for _, client in pairs(server.clients) do
+				local state
+				for _, state_name in ipairs {"played", "master", "session", "online"} do
+					if client:get_state(state_name) then
+						state = state_name
+						break
+					end
+				end
+				local session_name = client.session and client.session.justname or ""
+				table_row(tag, client.id, client.nickname, session_name, state)
+			end
+		end
+		return table_end(socket)
+	end)
+	command("sessions", "list sessions", 0, function (socket)
+		table_begin("vcore/vdata", "name", "password", "state", "users")
+		for tag, server in pairs(servers) do
+			for _, session in pairs(server.sessions) do
+				local state = ""
+				if session.locked then
+					state = "locked"
+				elseif session.closed then
+					state = "closed"
+				end
+				table_row(tag, session.justname, session.justpass, state, session.master.nickname)
+				for _, client in pairs(session.clients) do
+					if client ~= session.master then
+						table_row("", "", "", "", client.nickname)
+					end
+				end
+			end
+		end
+		return table_end(socket)
+	end)
+	command("kick", "kick <user>", 1, function (socket, who)
+		local _, id = find_user(who)
+		if not id then
+			return writeln(socket, "not registered")
+		end
+		local remote = find_remote(id)
+		if not remote then
+			return writeln(socket, "user is offline")
+		end
+		remote.socket:close()
+		return writeln(socket, "kicked: #%d %s", remote.id, remote.nickname)
+	end)
+	command("block", "block <user>", 1, function (socket, who)
+		local email = find_user(who)
+		if not ( email and xregister.block(email, true) ) then
+			return writeln(socket, "unknown user: %s", who)
+		end
+		return writeln(socket, "account blocked: %s", email)
+	end)
+	command("unblock", "unblock <user>", 1, function (socket, who)
+		local email = find_user(who)
+		if not ( email and xregister.block(email, false) ) then
+			return writeln(socket, "unknown user: %s", who)
+		end
+		return writeln(socket, "account unblocked: %s", email)
+	end)
+	command("stop", "stop server", 0, function (socket)
+		return os.exit()
+	end)
+	command("help", "print available commands", 0, function (socket, cmd)
+		if cmd and commands[cmd] then
+			return writeln(socket, "%s", commands[cmd].description)
+		end
+		table_begin()
+		for _, command in ipairs(commands) do
+			table_row(command.name, command.description)
+		end
+		return table_end(socket)
+	end)
+	local function process(socket, cmd, argv)
+		if #cmd < 3 then
+			return writeln(socket, "type at least 3 first letters of command")
+		end
+		local selected = nil
+		local pattern = "^" .. cmd:gsub("%W", "%%%1")
+		for _, command in ipairs(commands) do
+			if command.name:match(pattern) then
+				if selected == nil then
+					selected = command
+				elseif selected == false then
+					writeln(socket, "? %s", command.name)
+				else
+					writeln(socket, "? %s", selected.name)
+					writeln(socket, "? %s", command.name)
+					selected = false
+				end
+			end
+		end
+		if selected == nil then
+			return writeln(socket, "unknown command")
+		end
+		if selected == false then
+			return writeln(socket, "ambiguous command")
+		end
+		if #argv < selected.argc then
+			return writeln(socket, "command requires at least %d argument%s", selected.argc, selected.argc > 1 and "s" or "")
+		end
+		return selected.handler(socket, unpack(argv))
+	end
+	local function repl(socket)
+		log("info", "connected from %s:%s", socket:getpeername())
+		writeln(socket, "Welcome to %s", VERSION)
+		while true do
+			socket:send("> ")
+			local line = {}
+			while true do
+				local char, err, byte = socket:receive(1)
+				if not char then
+					return
+				end
+				byte = char:byte()
+				if byte == 8 then
+					line[#line] = nil
+				elseif byte == 13 then
+					line = table.concat(line)
+					break
+				elseif byte >= 32 then
+					line[#line + 1] = char
+				end
+			end
+			log("debug", "exec: %s", line)
+			local words = {}
+			for word in line:gmatch("[%S]+") do
+				table.insert(words, word)
+			end
+			if words[1] then
+				process(socket, table.remove(words, 1), words)
+			end
+		end
+		socket:close()
+		log("info", "disconnected")
+	end
 	if not xconfig.admin then
 		log("info", "disabled")
 	else
-		local function find_user(who)
-			local id = tonumber(who)
-			for email, account in pairs(register) do
-				if email == who
-				or account.id == id
-				or account.nickname == who
-				then
-					return email, account.id
-				end
-			end
-			return nil, nil
-		end
-		local function find_remote(id)
-			for _, server in pairs(servers) do
-				for client_id, client in pairs(server.clients) do
-					if client_id == id then
-						return client
-					end
-				end
-			end
-			return nil
-		end
-		local table_head
-		local table_cols
-		local table_rows
-		local function table_begin(...)
-			table_head = {...}
-			table_cols = {}
-			table_rows = {}
-			for i, head in ipairs(table_head) do
-				table_cols[i] = #head
-			end
-		end
-		local function table_row(...)
-			local row = {}
-			for i, cell in ipairs {...} do
-				cell = tostring(cell)
-				row[i] = cell
-				if ( not table_cols[i] )
-				or ( table_cols[i] < #cell ) then
-					table_cols[i] = #cell
-				end
-			end
-			table_rows[#table_rows + 1] = row
-		end
-		local function table_end(socket)
-			local row_strips = {}
-			local row_format = {}
-			for _, col in ipairs(table_cols) do
-				table.insert(row_strips, ("-"):rep(col))
-				table.insert(row_format, "%-" .. col .. "s")
-			end
-			row_strips = "+-" .. table.concat(row_strips, "-+-") .. "-+\r\n"
-			row_format = "| " .. table.concat(row_format, " | ") .. " |\r\n"
-			local buffer = {}
-			table.insert(buffer, row_strips)
-			if #table_head > 0 then
-				table.insert(buffer, row_format:format(unpack(table_head)))
-				table.insert(buffer, row_strips)
-			end
-			for _, row in ipairs(table_rows) do
-				table.insert(buffer, row_format:format(unpack(row)))
-			end
-			table.insert(buffer, row_strips)
-			table_head = nil
-			table_cols = nil
-			table_rows = nil
-			return socket:send(table.concat(buffer))
-		end
-		local function writeln(socket, fmt, ...)
-			return socket:send((fmt .. "\r\n"):format(...))
-		end
-		local commands = {}
-		local function command(name, description, argc, handler)
-			local command =
-			{
-				name = name,
-				description = description,
-				argc = argc,
-				handler = handler,
-			}
-			commands[#commands + 1] = command
-			commands[name] = command
-		end
-		command("exit", "close this console", 0, function (socket)
-			return socket:close()
-		end)
-		command("info", "server info", 0, function (socket)
-			table_begin()
-			local users = 0
-			for _, account in pairs(register) do
-				if type(account) == "table" then
-					users = users + 1
-				end
-			end
-			table_row("registered users", users)
-			users = 0
-			for _, server in pairs(servers) do
-				for _ in pairs(server.clients) do
-					users = users + 1
-				end
-			end
-			table_row("online users", users)
-			table_row("running threads", xsocket.threads)
-			return table_end(socket)
-		end)
-		command("reg", "list registered users", 0, function (socket)
-			local byid = {}
-			for email, account in pairs(register) do
-				if type(account) == "table" then
-					byid[#byid + 1] = email:lower()
-				end
-			end
-			table.sort(byid, function (a, b) return register[a].id < register[b].id end)
-			table_begin("id", "email", "nickname", "password", "blocked")
-			for _, email in ipairs(byid) do
-				local account = register[email]
-				table_row(account.id, email, account.nickname, account.password, tostring(account.blocked))
-			end
-			return table_end(socket)
-		end)
-		command("users", "list online users", 0, function (socket)
-			table_begin("vcore/vdata", "id", "nickname", "session", "state")
-			for client in pairs(auth_server.clients) do
-				table_row("", "", client.host .. ":" .. client.port, "", "auth")
-			end
-			for tag, server in pairs(servers) do
-				for _, client in pairs(server.clients) do
-					local state
-					for _, state_name in ipairs {"played", "master", "session", "online"} do
-						if client:get_state(state_name) then
-							state = state_name
-							break
-						end
-					end
-					local session_name = client.session and client.session.justname or ""
-					table_row(tag, client.id, client.nickname, session_name, state)
-				end
-			end
-			return table_end(socket)
-		end)
-		command("sessions", "list sessions", 0, function (socket)
-			table_begin("vcore/vdata", "name", "password", "state", "users")
-			for tag, server in pairs(servers) do
-				for _, session in pairs(server.sessions) do
-					local state = ""
-					if session.locked then
-						state = "locked"
-					elseif session.closed then
-						state = "closed"
-					end
-					table_row(tag, session.justname, session.justpass, state, session.master.nickname)
-					for _, client in pairs(session.clients) do
-						if client ~= session.master then
-							table_row("", "", "", "", client.nickname)
-						end
-					end
-				end
-			end
-			return table_end(socket)
-		end)
-		command("kick", "kick <user>", 1, function (socket, who)
-			local _, id = find_user(who)
-			if not id then
-				return writeln(socket, "not registered")
-			end
-			local remote = find_remote(id)
-			if not remote then
-				return writeln(socket, "user is offline")
-			end
-			remote.socket:close()
-			return writeln(socket, "kicked: #%d %s", remote.id, remote.nickname)
-		end)
-		command("block", "block <user>", 1, function (socket, who)
-			local email = find_user(who)
-			if not ( email and xregister.block(email, true) ) then
-				return writeln(socket, "unknown user: %s", who)
-			end
-			return writeln(socket, "account blocked: %s", email)
-		end)
-		command("unblock", "unblock <user>", 1, function (socket, who)
-			local email = find_user(who)
-			if not ( email and xregister.block(email, false) ) then
-				return writeln(socket, "unknown user: %s", who)
-			end
-			return writeln(socket, "account unblocked: %s", email)
-		end)
-		command("stop", "stop server", 0, function (socket)
-			return os.exit()
-		end)
-		command("help", "print available commands", 0, function (socket, cmd)
-			if cmd and commands[cmd] then
-				return writeln(socket, "%s", commands[cmd].description)
-			end
-			table_begin()
-			for _, command in ipairs(commands) do
-				table_row(command.name, command.description)
-			end
-			return table_end(socket)
-		end)
-		local function process(socket, cmd, argv)
-			if #cmd < 3 then
-				return writeln(socket, "type at least 3 first letters of command")
-			end
-			local selected = nil
-			local pattern = "^" .. cmd:gsub("%W", "%%%1")
-			for _, command in ipairs(commands) do
-				if command.name:match(pattern) then
-					if selected == nil then
-						selected = command
-					elseif selected == false then
-						writeln(socket, "? %s", command.name)
-					else
-						writeln(socket, "? %s", selected.name)
-						writeln(socket, "? %s", command.name)
-						selected = false
-					end
-				end
-			end
-			if selected == nil then
-				return writeln(socket, "unknown command")
-			end
-			if selected == false then
-				return writeln(socket, "ambiguous command")
-			end
-			if #argv < selected.argc then
-				return writeln(socket, "command requires at least %d argument%s", selected.argc, selected.argc > 1 and "s" or "")
-			end
-			return selected.handler(socket, unpack(argv))
-		end
-		local function repl(socket)
-			writeln(socket, "Welcome to %s", VERSION)
-			while true do
-				socket:send("> ")
-				local line = {}
-				while true do
-					local char, err, byte = socket:receive(1)
-					if not char then
-						return
-					end
-					byte = char:byte()
-					if byte == 8 then
-						line[#line] = nil
-					elseif byte == 13 then
-						line = table.concat(line)
-						break
-					elseif byte >= 32 then
-						line[#line + 1] = char
-					end
-				end
-				log("debug", "exec: %s", line)
-				local words = {}
-				for word in line:gmatch("[%S]+") do
-					table.insert(words, word)
-				end
-				if words[1] then
-					process(socket, table.remove(words, 1), words)
-				end
-			end
-		end
 		local host, port = assert(xconfig.admin.host), assert(xconfig.admin.port)
 		local server_socket = assert(xsocket.tcp())
 		assert(server_socket:bind(host, port))
@@ -2291,14 +2399,7 @@ do
 		xsocket.spawn(
 			function ()
 				while true do
-					xsocket.spawn(
-						function (client_socket)
-							log("info", "connected from %s:%s", client_socket:getpeername())
-							repl(client_socket)
-							client_socket:close()
-							log("info", "disconnected")
-						end,
-						assert(server_socket:accept()))
+					xsocket.spawn(repl, assert(server_socket:accept()))
 				end
 			end)
 	end
@@ -2307,17 +2408,17 @@ end
 -- // xecho // --
 do
 	local log = xlog("xecho")
-	local host = "*"
-	local port = 31523
-	local title = nil
-	if type(xconfig.echo) == "table" then
-		host = xconfig.echo.host or host
-		port = xconfig.echo.port or port
-		title = xconfig.echo.title
-	end
 	if xconfig.echo == false then
 		log("info", "disabled") 
 	else
+		local host = "*"
+		local port = 31523
+		local title = nil
+		if type(xconfig.echo) == "table" then
+			host = xconfig.echo.host or host
+			port = xconfig.echo.port or port
+			title = xconfig.echo.title
+		end
 		local echo_socket = assert(xsocket.udp())
 		assert(echo_socket:setsockname(host or "*", port or 31523))
 		log("info", "listening at udp:%s:%s", echo_socket:getsockname())
@@ -2338,7 +2439,9 @@ end
 do
 	local log = xlog("sich")
 	VERSION = VERSION or "Sich DEV"
-	log("info", "%s", VERSION)
+	if jit then
+		_VERSION = jit.version
+	end
 	local host = xconfig.host or "*"
 	local port = xconfig.port or 31523
 	local server_socket = assert(xsocket.tcp())
@@ -2348,14 +2451,10 @@ do
 	xsocket.spawn(
 		function ()
 			while true do
-				xsocket.spawn(
-					function (client_socket)
-						xserver(client_socket)
-						client_socket:close()
-					end,
-					assert(server_socket:accept()))
+				xsocket.spawn(xserver, assert(server_socket:accept()))
 			end
 		end)
+	log("info", "%s, %s", VERSION, _VERSION)
 	xsocket.loop()
 end
 

@@ -24,6 +24,10 @@ xsession = xclass
 		self.password = request.password
 		self.gamename = request.gamename
 		self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
+		if not self.justname then
+			self.justname = "QuickPlay"
+			self.justpass = ""
+		end
 		self.mapname = request.mapname
 		self.money = request.money
 		self.fog_of_war = request.fog_of_war
@@ -134,7 +138,7 @@ xsession = xclass
 			for _, client in pairs(self.clients) do
 				leave_client(client)
 			end
-			log("debug", "destroying room: %s", self.justname)
+			remote.log("debug", "destroying room: %s", self.justname)
 			remote.server.sessions[remote.id] = nil
 		else
 			response
@@ -208,6 +212,10 @@ xsession = xclass
 		remote.log("debug", "updating room: %s", self.justname)
 		self.gamename = request.gamename
 		self.justname, self.justpass = self.gamename:match('"(.-)"\t"(.-)"')
+		if not self.justname then
+			self.justname = "QuickPlay"
+			self.justpass = ""
+		end
 		self.mapname = request.mapname
 		self.money = request.money
 		self.fog_of_war = request.fog_of_war
@@ -216,10 +224,8 @@ xsession = xclass
 	end,
 	
 	client_update = function (self, remote, request)
-		remote.log("info", "updating clients team: %d", request.team)
-		for _, client in pairs(self.clients) do
-			client.team = request.team
-		end
+		remote.log("info", "updating client team: %d", request.team)
+		remote.team = request.team
 		return xpackage(xcmd.USER_SESSION_CLIENT_UPDATE, remote.id, 0)
 			:write_byte(remote.team)
 			:broadcast(remote)

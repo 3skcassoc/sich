@@ -81,7 +81,7 @@ cores["1.0.0.7"] = xclass
 		if remote.session.master == remote then
 			return true
 		end
-		log("debug", "remote is not session master")
+		remote.log("debug", "remote is not session master")
 		return false
 	end,
 	
@@ -155,7 +155,7 @@ cores["1.0.0.7"] = xclass
 	end,
 	
 	[xcmd.SERVER_SESSION_CLIENT_UPDATE] = function (self, remote, request)
-		return self:master_session_action("client_update", remote, request)
+		return self:session_action("client_update", remote, request)
 	end,
 	
 	[xcmd.SERVER_VERSION_INFO] = function (self, remote, request)
@@ -261,11 +261,11 @@ local auth_core = xclass
 			return 3
 		end
 		if not cores[request.vcore] then
-			-- 4 data version is outdated
+			-- 4 core version is outdated
 			remote.log("warn", "requested unknown core version: %s", request.vcore)
 		end
 		if not datas[request.vdata] then
-			-- 5 core version is outdated
+			-- 5 data version is outdated
 			remote.log("debug", "requested unknown data version: %s", request.vdata)
 		end
 		if request.code == xcmd.SERVER_REGISTER then
@@ -404,8 +404,8 @@ xserver = function (socket)
 		local code = packet.code
 		local session = remote.session
 		if 0x0190 <= code and code <= 0x01F4 then
-			packet:dump_head()
 			if code ~= xcmd.SERVER_SESSION_PARSER then
+				packet:dump_head()
 				remote.server:process(remote, packet)
 			elseif session then
 				packet.code = xcmd.USER_SESSION_PARSER
@@ -430,4 +430,6 @@ xserver = function (socket)
 	
 	remote.server:disconnected(remote)
 	remote.log("info", "disconnected")
+	
+	socket:close()
 end

@@ -4,19 +4,19 @@ require "xsocket"
 
 local log = xlog("xecho")
 
-local host = "*"
-local port = 31523
-local title = nil
-
-if type(xconfig.echo) == "table" then
-	host = xconfig.echo.host or host
-	port = xconfig.echo.port or port
-	title = xconfig.echo.title
-end
-
 if xconfig.echo == false then
 	log("info", "disabled") 
 else
+	local host = "*"
+	local port = 31523
+	local title = nil
+	
+	if type(xconfig.echo) == "table" then
+		host = xconfig.echo.host or host
+		port = xconfig.echo.port or port
+		title = xconfig.echo.title
+	end
+	
 	local echo_socket = assert(xsocket.udp())
 	assert(echo_socket:setsockname(host or "*", port or 31523))
 	log("info", "listening at udp:%s:%s", echo_socket:getsockname())

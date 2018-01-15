@@ -8,7 +8,10 @@ require "xecho"
 local log = xlog("sich")
 
 VERSION = VERSION or "Sich DEV"
-log("info", "%s", VERSION)
+
+if jit then
+	_VERSION = jit.version
+end
 
 local host = xconfig.host or "*"
 local port = xconfig.port or 31523
@@ -21,13 +24,10 @@ log("info", "listening at tcp:%s:%s", server_socket:getsockname())
 xsocket.spawn(
 	function ()
 		while true do
-			xsocket.spawn(
-				function (client_socket)
-					xserver(client_socket)
-					client_socket:close()
-				end,
-				assert(server_socket:accept()))
+			xsocket.spawn(xserver, assert(server_socket:accept()))
 		end
 	end)
+
+log("info", "%s, %s", VERSION, _VERSION)
 
 xsocket.loop()

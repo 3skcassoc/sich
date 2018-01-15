@@ -70,7 +70,7 @@ do
 		elseif line == "section.end" then
 			break
 		elseif section_begin then
-			local enabled, server = line:match("^(/?/?)%*%s*=%s*(.-)%s*$")
+			local enabled, server = line:match("^(/?/?)%s*%*%s*=%s*(.-)%s*$")
 			table.insert(servers, server)
 			if enabled ~= "//" then
 				selected = #servers
