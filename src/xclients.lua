@@ -27,6 +27,7 @@ xclients = xclass
 	end,
 	
 	broadcast = function (self, package)
+		package:dump_head()
 		local buffer = package:get()
 		for _, client in pairs(self.clients) do
 			client.socket:send(buffer)
@@ -39,7 +40,7 @@ xclients = xclass
 			return self:broadcast(package)
 		end
 		if self:check_client(package.id_to) then
-			self.clients[package.id_to].socket:send(package:get())
+			package:transmit(self.clients[package.id_to])
 		end
 		return package
 	end,

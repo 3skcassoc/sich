@@ -39,13 +39,15 @@ xpackage = xclass
 			:get_buffer()
 	end,
 	
-	dump_head = function (self)
-		return log("debug", "%04X %s  id_from=%d id_to=%d",
+	dump_head = function (self, flog)
+		flog = flog or log
+		return flog("debug", "%04X %s  id_from=%d id_to=%d",
 			self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
 	end,
 	
-	dump_payload = function (self)
-		if not log:check("debug") then
+	dump_payload = function (self, flog)
+		flog = flog or log
+		if not flog:check("debug") then
 			return
 		end
 		local pos = 1
@@ -56,7 +58,7 @@ xpackage = xclass
 				line:gsub(".", function (c) return ("%02X "):format(c:byte()) end)
 				..
 				("   "):rep( #buffer - pos < 17 and 15 - (#buffer - pos) or 0 )
-			log("debug", "%04X | %s %s| %s",
+			flog("debug", "%04X | %s %s| %s",
 				pos - 1,
 				hex:sub(1, 24),
 				hex:sub(25),
@@ -66,6 +68,7 @@ xpackage = xclass
 	end,
 	
 	transmit = function (self, client)
+		self:dump_head(client.log)
 		client.socket:send(self:get())
 		return self
 	end,

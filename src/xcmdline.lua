@@ -37,7 +37,7 @@ xcmdline = xclass
 				if name then
 					dest = self.longs[name] or {}
 					self.longs[name] = dest
-					if value ~= "" and eq ~= "" then
+					if eq == "=" and value ~= "" then
 						table.insert(dest, value:match('^"(.*)"$') or value)
 						dest = nil
 					end
@@ -71,8 +71,8 @@ xcmdline = xclass
 			log("warn", "args: short=[%s], long=[%s]", table.concat(short_value, ", "), table.concat(long_value, ", "))
 		end
 		if remove then
-			self.shorts[short] = nil
-			self.longs[long] = nil
+			self.shorts[short or 1] = nil
+			self.longs[long or 1] = nil
 		end
 		return long_value or short_value
 	end,

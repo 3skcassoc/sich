@@ -404,8 +404,8 @@ xserver = function (socket)
 		local code = packet.code
 		local session = remote.session
 		if 0x0190 <= code and code <= 0x01F4 then
+			packet:dump_head(remote.log)
 			if code ~= xcmd.SERVER_SESSION_PARSER then
-				packet:dump_head()
 				remote.server:process(remote, packet)
 			elseif session then
 				packet.code = xcmd.USER_SESSION_PARSER

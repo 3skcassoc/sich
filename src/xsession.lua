@@ -50,16 +50,6 @@ xsession = xclass
 				"battlefield")
 			:broadcast(remote)
 		
-		if remote.rejoin then
-			local invite = xpackage(xcmd.USER_SESSION_REJOIN, remote.id, 0)
-			for _, client in ipairs(remote.rejoin) do
-				if client ~= remote then
-					invite:transmit(client)
-				end
-			end
-		end
-		remote.rejoin = nil
-		
 		return self
 	end,
 	
@@ -103,18 +93,15 @@ xsession = xclass
 	leave = function (self, remote)
 		remote.log("info", "leaving room: %s", self.justname)
 		
-		local new_master
-		if self.master == remote and self.closed then
+		local new_master = nil
+		local new_clients = {}
+		if self.master == remote and self.locked then
 			for _, client in pairs(self.clients) do
 				if client == remote then
 				elseif not new_master then
 					new_master = client
-					new_master.rejoin =
-					{
-						[1] = new_master,
-					}
 				else
-					table.insert(new_master.rejoin, client)
+					table.insert(new_clients, client)
 				end
 			end
 		end
@@ -151,19 +138,24 @@ xsession = xclass
 			return
 		end
 		local clientlist = xparser("clientlist", "\0")
-		for _, client in ipairs(new_master.rejoin) do
+		clientlist:add("*", new_master.id)
+		for _, client in ipairs(new_clients) do
 			clientlist:add("*", client.id)
 		end
 		local parser = xparser("", "\0")
 			:add("gamename", self.gamename)
 			:add("mapname", self.mapname)
 			:add("master", new_master.id)
-			:add("clients", #new_master.rejoin)
+			:add("clients", 1 + #new_clients)
 			:append(clientlist)
 		parser:dump()
-		return xpackage(xcmd.USER_SESSION_RECREATE, new_master.id, new_master.id)
+		xpackage(xcmd.USER_SESSION_RECREATE, new_master.id, new_master.id)
 			:write_parser_with_size(parser)
 			:transmit(new_master)
+		local rejoin = xpackage(xcmd.USER_SESSION_REJOIN, new_master.id, 0)
+		for _, client in ipairs(new_clients) do
+			rejoin:transmit(client)
+		end
 	end,
 	
 	lock = function (self, remote, request)

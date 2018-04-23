@@ -39,7 +39,7 @@ xsocks = xclass
 		while true do
 			local b = self:receive(1)
 			if not b then
-				return
+				return nil
 			end
 			if b == 0 then
 				break

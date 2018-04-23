@@ -19,7 +19,6 @@ xclient = xclass
 		self.port = port
 		self.team = 0
 		self.states = 0
-		self.rejoin = nil
 		self.socket = socket
 		return self
 	end,

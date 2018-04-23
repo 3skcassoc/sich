@@ -3,7 +3,7 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.1.3"
+VERSION = "Sich v0.1.5"
 
 -- // xstore // --
 do
@@ -575,12 +575,14 @@ do
 				:write_buffer(payload)
 				:get_buffer()
 		end,
-		dump_head = function (self)
-			return log("debug", "%04X %s  id_from=%d id_to=%d",
+		dump_head = function (self, flog)
+			flog = flog or log
+			return flog("debug", "%04X %s  id_from=%d id_to=%d",
 				self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
 		end,
-		dump_payload = function (self)
-			if not log:check("debug") then
+		dump_payload = function (self, flog)
+			flog = flog or log
+			if not flog:check("debug") then
 				return
 			end
 			local pos = 1
@@ -591,7 +593,7 @@ do
 					line:gsub(".", function (c) return ("%02X "):format(c:byte()) end)
 					..
 					("   "):rep( #buffer - pos < 17 and 15 - (#buffer - pos) or 0 )
-				log("debug", "%04X | %s %s| %s",
+				flog("debug", "%04X | %s %s| %s",
 					pos - 1,
 					hex:sub(1, 24),
 					hex:sub(25),
@@ -600,6 +602,7 @@ do
 			end
 		end,
 		transmit = function (self, client)
+			self:dump_head(client.log)
 			client.socket:send(self:get())
 			return self
 		end,
@@ -1129,7 +1132,6 @@ do
 			self.port = port
 			self.team = 0
 			self.states = 0
-			self.rejoin = nil
 			self.socket = socket
 			return self
 		end,
@@ -1177,6 +1179,7 @@ do
 			return false
 		end,
 		broadcast = function (self, package)
+			package:dump_head()
 			local buffer = package:get()
 			for _, client in pairs(self.clients) do
 				client.socket:send(buffer)
@@ -1188,7 +1191,7 @@ do
 				return self:broadcast(package)
 			end
 			if self:check_client(package.id_to) then
-				self.clients[package.id_to].socket:send(package:get())
+				package:transmit(self.clients[package.id_to])
 			end
 			return package
 		end,
@@ -1236,15 +1239,6 @@ do
 					"fog_of_war",
 					"battlefield")
 				:broadcast(remote)
-			if remote.rejoin then
-				local invite = xpackage(xcmd.USER_SESSION_REJOIN, remote.id, 0)
-				for _, client in ipairs(remote.rejoin) do
-					if client ~= remote then
-						invite:transmit(client)
-					end
-				end
-			end
-			remote.rejoin = nil
 			return self
 		end,
 		message = function (self, remote, request)
@@ -1280,18 +1274,15 @@ do
 		end,
 		leave = function (self, remote)
 			remote.log("info", "leaving room: %s", self.justname)
-			local new_master
-			if self.master == remote and self.closed then
+			local new_master = nil
+			local new_clients = {}
+			if self.master == remote and self.locked then
 				for _, client in pairs(self.clients) do
 					if client == remote then
 					elseif not new_master then
 						new_master = client
-						new_master.rejoin =
-						{
-							[1] = new_master,
-						}
 					else
-						table.insert(new_master.rejoin, client)
+						table.insert(new_clients, client)
 					end
 				end
 			end
@@ -1326,19 +1317,24 @@ do
 				return
 			end
 			local clientlist = xparser("clientlist", "\0")
-			for _, client in ipairs(new_master.rejoin) do
+			clientlist:add("*", new_master.id)
+			for _, client in ipairs(new_clients) do
 				clientlist:add("*", client.id)
 			end
 			local parser = xparser("", "\0")
 				:add("gamename", self.gamename)
 				:add("mapname", self.mapname)
 				:add("master", new_master.id)
-				:add("clients", #new_master.rejoin)
+				:add("clients", 1 + #new_clients)
 				:append(clientlist)
 			parser:dump()
-			return xpackage(xcmd.USER_SESSION_RECREATE, new_master.id, new_master.id)
+			xpackage(xcmd.USER_SESSION_RECREATE, new_master.id, new_master.id)
 				:write_parser_with_size(parser)
 				:transmit(new_master)
+			local rejoin = xpackage(xcmd.USER_SESSION_REJOIN, new_master.id, 0)
+			for _, client in ipairs(new_clients) do
+				rejoin:transmit(client)
+			end
 		end,
 		lock = function (self, remote, request)
 			remote.log("info", "locking room: %s", self.justname)
@@ -1782,8 +1778,8 @@ do
 			local code = packet.code
 			local session = remote.session
 			if 0x0190 <= code and code <= 0x01F4 then
+				packet:dump_head(remote.log)
 				if code ~= xcmd.SERVER_SESSION_PARSER then
-					packet:dump_head()
 					remote.server:process(remote, packet)
 				elseif session then
 					packet.code = xcmd.USER_SESSION_PARSER
@@ -2105,7 +2101,7 @@ do
 				local timeout = nil
 				if #slept > 0 then
 					timeout = math.huge
-					for _, ts in rpairs(slept) do
+					for _, ts in ipairs(slept) do
 						timeout = math.min(timeout, ts)
 					end
 					timeout = math.max(0, timeout - socket.gettime())

@@ -318,7 +318,7 @@ xsocket =
 			local timeout = nil
 			if #slept > 0 then
 				timeout = math.huge
-				for _, ts in rpairs(slept) do
+				for _, ts in ipairs(slept) do
 					timeout = math.min(timeout, ts)
 				end
 				timeout = math.max(0, timeout - socket.gettime())
