@@ -1,5 +1,5 @@
 require "xlog"
-require "xcmd"
+require "xconst"
 require "xclass"
 require "xpack"
 
@@ -22,8 +22,7 @@ xpackage = xclass
 		if not head then
 			return nil
 		end
-		local payload_length, code, id_from, id_to =
-			xpack(head):read("4244")
+		local payload_length, code, id_from, id_to = xpack(head):read("4244")
 		local payload = socket:receive(payload_length)
 		if not payload then
 			return nil
@@ -34,37 +33,9 @@ xpackage = xclass
 	get = function (self)
 		local payload = self:get_buffer()
 		return xpack()
-			:write_array("4244", {#payload, self.code, self.id_from, self.id_to})
+			:write("4244", #payload, self.code, self.id_from, self.id_to)
 			:write_buffer(payload)
 			:get_buffer()
-	end,
-	
-	dump_head = function (self, flog)
-		flog = flog or log
-		return flog("debug", "%04X %s  id_from=%d id_to=%d",
-			self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
-	end,
-	
-	dump_payload = function (self, flog)
-		flog = flog or log
-		if not flog:check("debug") then
-			return
-		end
-		local pos = 1
-		local buffer = self:get_buffer()
-		while pos <= #buffer do
-			local line = buffer:sub(pos, pos + 16 - 1)
-			local hex = 
-				line:gsub(".", function (c) return ("%02X "):format(c:byte()) end)
-				..
-				("   "):rep( #buffer - pos < 17 and 15 - (#buffer - pos) or 0 )
-			flog("debug", "%04X | %s %s| %s",
-				pos - 1,
-				hex:sub(1, 24),
-				hex:sub(25),
-				(line:gsub("%c", "?")))
-			pos = pos + 16
-		end
 	end,
 	
 	transmit = function (self, client)
@@ -87,5 +58,33 @@ xpackage = xclass
 	
 	session_dispatch = function (self, client)
 		return client.session:dispatch(self)
+	end,
+	
+	dump_head = function (self, flog)
+		flog = flog or log
+		return flog("debug", "%04X %s  id_from=%d id_to=%d",
+			self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
+	end,
+	
+	dump_payload = function (self, flog)
+		flog = flog or log
+		if not flog:check("debug") then
+			return
+		end
+		local pos = 1
+		local buffer = self:get_buffer()
+		while pos <= #buffer do
+			local line = buffer:sub(pos, pos + 16 - 1)
+			local hex = 
+				line:gsub(".", function (c) return ("%02X "):format(c:byte()) end)
+				..
+				("   "):rep(#buffer - pos < 17 and 15 - (#buffer - pos) or 0)
+			flog("debug", "%04X | %s %s| %s",
+				pos - 1,
+				hex:sub(1, 24),
+				hex:sub(25),
+				(line:gsub("[^\32-\126]", "?")))
+			pos = pos + 16
+		end
 	end,
 }

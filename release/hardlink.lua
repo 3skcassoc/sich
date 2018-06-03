@@ -1,3 +1,25 @@
+-- // xclass // --
+do
+	local call = function (class, ...)
+		return setmetatable({__class = class}, class.__objmt):__create(...)
+	end
+	xclass = setmetatable(
+	{
+		__create = function (self)
+			return self
+		end,
+	},
+	{
+		__call = function (xclass, class)
+			class.__objmt = {__index = class}
+			return setmetatable(class, {
+				__index = class.__parent or xclass,
+				__call = call,
+			})
+		end,
+	})
+end
+
 -- // xstore // --
 do
 	local log_wait = {}
@@ -15,63 +37,80 @@ do
 	local function do_serialize(value, result, indent)
 		local value_type = type(value)
 		if value_type == "string" then
-			return table.insert(result, (("%q"):format(value):gsub("\\\n", "\\n")))
+			table.insert(result, (("%q"):format(value):gsub("\\\n", "\\n")))
 		elseif value_type == "nil" or value_type == "boolean" or value_type == "number" then
-			return table.insert(result, tostring(value))
+			table.insert(result, tostring(value))
 		elseif value_type ~= "table" then
-			return error("can not serialize: " .. value_type)
+			error("can not serialize: " .. value_type)
+		elseif next(value) == nil then
+			table.insert(result, "{}")
+		else
+			local keys = {}
+			for key in pairs(value) do
+				table.insert(keys, key)
+			end
+			table.sort(keys, function (a, b)
+				local ta, tb = type(a), type(b)
+				if ta ~= tb then
+					a, b = ta, tb
+				elseif ta == "string" then
+					local na, nb = tonumber(a), tonumber(b)
+					if na and nb then
+						a, b = na, nb
+					end
+				elseif ta ~= "number" then
+					a, b = tostring(a), tostring(b)
+				end
+				return a < b
+			end)
+			table.insert(result, "{\n")
+			for _, key in ipairs(keys) do
+				table.insert(result, ("\t"):rep(indent + 1))
+				table.insert(result, "[")
+				do_serialize(key, result, indent + 1)
+				table.insert(result, "] = ")
+				do_serialize(value[key], result, indent + 1)
+				table.insert(result, ",\n")
+			end
+			table.insert(result, ("\t"):rep(indent))
+			table.insert(result, "}")
 		end
-		if next(value) == nil then
-			return table.insert(result, "{}")
-		end
-		table.insert(result, "{\n")
-		for key, val in pairs(value) do
-			table.insert(result, ("\t"):rep(indent + 1))
-			table.insert(result, "[")
-			do_serialize(key, result, indent + 1)
-			table.insert(result, "] = ")
-			do_serialize(val, result, indent + 1)
-			table.insert(result, ",\n")
-		end
-		table.insert(result, ("\t"):rep(indent))
-		return table.insert(result, "}")
+		return result
 	end
 	local function serialize(value)
-		local result = {}
-		do_serialize(value, result, 0)
-		return table.concat(result)
+		return table.concat(do_serialize(value, {}, 0))
 	end
-	local path = arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$")
-	if not path then
-		path = "."
-	end
-	log("info", "path = %s", path)
+	local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
+	path = path:gsub('%%', '%%%%') .. "/%s.store"
+	log("debug", "path: %s", path)
 	xstore =
 	{
 		load = function (name, default)
-			local fun, msg = loadfile(path .. "/" .. name .. ".store")
-			if not fun then
+			name = path:format(name)
+			log("debug", "loading %q", name)
+			local file, msg = io.open(name, "r")
+			if not file then
 				log("debug", msg)
 				return default
 			end
-			log("info", "loading %q", name)
+			file:close()
+			local fun = assert(loadfile(name))
 			setfenv(fun, _G)
-			local ok, data = pcall(fun)
-			if not ok then
-				log("error", data)
-				return default
-			end
+			local _, data = assert(pcall(fun))
 			return data
 		end,
 		save = function (name, data)
-			log("info", "saving %q", name)
+			name = path:format(name)
+			log("debug", "saving %q", name)
 			local str = serialize(data)
-			local file, msg = io.open(path .. "/" .. name .. ".store", "w")
+			local file, msg = io.open(name, "w")
 			if not file then
-				return log("error", msg)
+				log("error", msg)
+				return false
 			end
-			file:write("return ", str)
-			return file:close()
+			file:write("return ", str, "\n")
+			file:close()
+			return true
 		end,
 	}
 end
@@ -122,11 +161,11 @@ do
 			"\n")
 	end
 	local function log_inc(self, value)
-		self.indent = self.indent + ( value or 1 )
+		self.indent = self.indent + (value or 1)
 		return self
 	end
 	local function log_dec(self, value)
-		self.indent = self.indent - ( value or 1 )
+		self.indent = self.indent - (value or 1)
 		return self
 	end
 	local function log_dummy()
@@ -163,28 +202,6 @@ do
 	end
 end
 
--- // xclass // --
-do
-	local call = function (class, ...)
-		return setmetatable({__class = class}, class.__objmt):__create(...)
-	end
-	xclass = setmetatable(
-	{
-		__create = function (self)
-			return self
-		end,
-	},
-	{
-		__call = function (xclass, class)
-			class.__objmt = {__index = class}
-			return setmetatable(class, {
-				__index = class.__parent or xclass,
-				__call = call,
-			})
-		end,
-	})
-end
-
 -- // xsocket // --
 do
 	local socket = require "socket"
@@ -201,6 +218,10 @@ do
 			end
 			self.closed = true
 			return nil, err
+		end,
+		bind = function (self, host, port)
+			log("debug", "socket bind: %s:%s", host, port)
+			return self.sock:bind(host, port)
 		end,
 		listen = function (self, backlog)
 			local ok, err = self.sock:listen(backlog)
@@ -364,8 +385,8 @@ do
 	local function append(thread, success, sock, set)
 		if not success then
 			xsocket.threads = xsocket.threads - 1
-			log("error", "thread crashed: %s", sock)
-			return print(debug.traceback(thread))
+			log("error", "thread crashed: %s", debug.traceback(thread, sock))
+			return
 		end
 		if not sock then
 			xsocket.threads = xsocket.threads - 1
@@ -437,10 +458,10 @@ do
 			coroutine.yield(0, slept)
 		end,
 		sleep = function (sec)
-			coroutine.yield(socket.gettime() + sec, slept)
+			coroutine.yield(xsocket.gettime() + sec, slept)
 		end,
 		sleep_until = function (ts)
-			if ts > socket.gettime() then
+			if ts > xsocket.gettime() then
 				coroutine.yield(ts, slept)
 			end
 		end,
@@ -466,7 +487,7 @@ do
 					end
 				end
 				if #slept > 0 then
-					local now = socket.gettime()
+					local now = xsocket.gettime()
 					for _, ts in rpairs(slept) do
 						if ts <= now then
 							local assoc = slept[ts]
@@ -482,7 +503,7 @@ do
 					for _, ts in ipairs(slept) do
 						timeout = math.min(timeout, ts)
 					end
-					timeout = math.max(0, timeout - socket.gettime())
+					timeout = math.max(0, timeout - xsocket.gettime())
 				end
 				local read, write = socket.select(recvt, sendt, timeout)
 				for _, sock in ipairs(read) do
@@ -501,58 +522,74 @@ do
 	local log = xlog("xparser")
 	xparser = xclass
 	{
-		read = function (class, package)
-			local key = package:read_long_string()
-			local value = package:read_long_string()
-			local count = package:read_dword()
-			if not ( key and value and count ) then
-				return
-			end
-			local self = class(key, value)
-			for _ = 1, count do
-				local node = class:read(package)
-				if not node then
-					return nil
-				end
-				self:append(node)
-			end
+		__create = function (self, key, value)
+			self.key = assert(key, "no key")
+			self.value = assert(value, "no value")
 			return self
 		end,
-		__create = function (self, key, value)
-			self.key = key
-			self.value = value
-			self.nodes = {}
-			return self
+		count = function (self)
+			return #self
+		end,
+		pairs = function (self)
+			return ipairs(self)
 		end,
 		append = function (self, node)
-			table.insert(self.nodes, node)
-			return self
+			table.insert(self, node)
+			return node
+		end,
+		find = function (self, key)
+			for _, node in self:pairs() do
+				if node.key == key then
+					return node
+				end
+			end
+			return nil
 		end,
 		add = function (self, key, value)
 			return self:append(xparser(key, value))
 		end,
-		write = function (self, package)
-			package
-				:write_long_string(self.key)
-				:write_long_string(tostring(self.value))
-				:write_dword(#self.nodes)
-			for _, node in ipairs(self.nodes) do
-				node:write(package)
+		get = function (self, key, default)
+			local node = self:find(key)
+			if node then
+				return node.value
 			end
-			return package
+			return default
 		end,
-		dump = function (self, subnode)
-			if not log:check("debug") then
+		set = function (self, key, value)
+			local node = self:find(key)
+			if node then
+				node.value = value
+				return node
+			end
+			return self:add(key, value)
+		end,
+		remove = function (self, key)
+			local i = self:count()
+			while i > 0 do
+				if self[i].key == key then
+					table.remove(self, i)
+				else
+					i = i - 1
+				end
+			end
+		end,
+		dump = function (self, flog)
+			flog = flog or log
+			if not flog:check("debug") then
 				return
 			end
-			log("debug", "%skey = %q, value = %q", (subnode and "" or "PARSER: "), self.key, self.value)
-			log:inc()
-			for _, node in ipairs(self.nodes) do
-				node:dump(true)
+			local function do_dump(parser)
+				flog("debug", "key = %q, value = %q", parser.key, parser.value)
+				flog:inc(2)
+				for _, node in parser:pairs() do
+					do_dump(node)
+				end
+				flog:dec(2)
 			end
-			log:dec()
+			return do_dump(self)
 		end,
 	}
+	null_parser = xparser("", "")
 end
 
 -- // xpack // --
@@ -560,9 +597,27 @@ do
 	local log = xlog("xpack")
 	xpack = xclass
 	{
+		formats =
+		{
+			["1"] = "byte",
+			["b"] = "boolean",
+			["d"] = "datetime",
+			["t"] = "timestamp",
+			["s"] = "byte_string",
+			["w"] = "word_string",
+			["z"] = "dword_string",
+			["v"] = "version",
+			["p"] = "parser",
+			["q"] = "parser_with_size",
+		},
 		__create = function (self, buffer, position)
 			self.buffer = buffer or {}
-			self.position = buffer and ( position or 1 )
+			self.position = buffer and (position or 1) or nil
+			return self
+		end,
+		reader = function (self, buffer, position)
+			self.buffer = buffer or self:get_buffer()
+			self.position = position or 1
 			return self
 		end,
 		get_buffer = function (self)
@@ -572,10 +627,13 @@ do
 				return self.buffer
 			end
 		end,
+		remain = function (self)
+			return math.max(0, #self.buffer - self.position + 1)
+		end,
 		read_check = function (self, size)
-			local left = ( #self.buffer - self.position + 1 )
-			if size > left then
-				log("error", "read_check: size=%d, left=%d", size, left)
+			local remain = self:remain()
+			if size > remain then
+				log("error", "read_check: size=%d, remain=%d", size, remain)
 				return false
 			end
 			return true
@@ -589,31 +647,34 @@ do
 			if not self:read_check(size) then
 				return nil
 			end
-			local result = self.buffer:sub(self.position, self.position + size - 1)
 			self.position = self.position + size
-			return result
+			return self.buffer:sub(self.position - size, self.position - 1)
 		end,
 		read_number = function (self, size)
 			if not self:read_check(size) then
 				return nil
 			end
-			local result = 0
-			for i = self.position + size - 1, self.position, -1 do
-				result = result * 256 + self.buffer:byte(i)
-			end
 			self.position = self.position + size
+			local byte = { self.buffer:byte(self.position - size, self.position - 1) }
+			local result = 0
+			for i = size, 1, -1 do
+				result = result * 256 + byte[i]
+			end
 			return result
 		end,
 		read_byte = function (self)
 			if not self:read_check(1) then
 				return nil
 			end
-			local result = self.buffer:byte(self.position)
 			self.position = self.position + 1
-			return result
+			return self.buffer:byte(self.position - 1)
 		end,
 		read_boolean = function (self)
-			return self:read_byte() ~= 0
+			local byte = self:read_byte()
+			if byte == nil then
+				return nil
+			end
+			return byte ~= 0
 		end,
 		read_word = function (self)
 			return self:read_number(2)
@@ -622,34 +683,92 @@ do
 			return self:read_number(4)
 		end,
 		read_datetime = function (self)
-			return self:read_number(8)
-		end,
-		read_string = function (self)
-			local size = self:read_byte()
-			if size == nil then
+			if not self:read_check(8) then
 				return nil
 			end
-			return self:read_buffer(size)
+			self.position = self.position + 8
+			local byte = { self.buffer:byte(self.position - 8, self.position - 1) }
+			local sign = (byte[8] < 128)
+			local exponent = (byte[8] % 128) * 16 + math.floor(byte[7] / 16)
+			local mantissa = byte[7] % 16
+			for i = 6, 1, -1 do
+				mantissa = mantissa * 256 + byte[i]
+			end
+			if (mantissa == 0 and exponent == 0) or (sign == false) or (exponent == 2047) then
+				return 0
+			end
+			mantissa = 1 + math.ldexp(mantissa, -52)
+			return math.ldexp(mantissa, exponent - 1023)
 		end,
-		read_long_string = function (self)
-			local size = self:read_number(4)
-			if size == nil then
+		read_timestamp = function (self)
+			local datetime = self:read_datetime()
+			if datetime == nil then
 				return nil
 			end
-			return self:read_buffer(size)
+			return math.max(0, (datetime - 25569.0) * 86400.0)
+		end,
+		read_string = function (self, len_size)
+			local len = self:read_number(len_size)
+			if len == nil then
+				return nil
+			end
+			return self:read_buffer(len)
+		end,
+		read_byte_string = function (self)
+			return self:read_string(1)
+		end,
+		read_word_string = function (self)
+			return self:read_string(2)
+		end,
+		read_dword_string = function (self)
+			return self:read_string(4)
+		end,
+		read_version = function (self)
+			local str = self:read_byte_string()
+			if str == nil then
+				return nil
+			end
+			local result = 0
+			for part in str:gmatch("[0-9]+") do
+				result = result * 256 + tonumber(part)
+			end
+			return result
+		end,
+		read_parser = function (self)
+			if self:remain() == 0 then
+				return null_parser
+			end
+			local key, value, count = self:read("zz4")
+			if not key then
+				return
+			end
+			local parser = xparser(key, value)
+			for _ = 1, count do
+				local node = self:read_parser()
+				if not node then
+					return nil
+				end
+				parser:append(node)
+			end
+			return parser
+		end,
+		read_parser_with_size = function (self)
+			local buffer = self:read_dword_string()
+			if buffer == nil then
+				return nil
+			end
+			return xpack(buffer):read_parser()
 		end,
 		read_array = function (self, format)
 			local array = {}
 			for i = 1, #format do
-				local fmt, value = format:sub(i, i)
-				if fmt == "s" then
-					value = self:read_string()
-				elseif fmt == "b" then
-					value = ( self:read_byte() ~= 0 )
-				elseif fmt == "1" then
-					value = self:read_byte()
+				local fmt, value = format:sub(i, i), nil
+				local ftype = self.formats[fmt]
+				if ftype then
+					value = self["read_" .. ftype](self)
 				else
-					value = self:read_number(tonumber(fmt))
+					fmt = assert(tonumber(fmt), "invalid format")
+					value = self:read_number(fmt)
 				end
 				if value == nil then
 					return nil
@@ -664,9 +783,24 @@ do
 				return nil
 			end
 			for index, value in ipairs(values) do
-				object[select(index, ...)] = value
+				local key = assert(select(index, ...), "no more keys")
+				object[key] = value
 			end
 			return object
+		end,
+		read_objects = function (self, objects, format, ...)
+			local count = self:read_dword()
+			if count == nil then
+				return nil
+			end
+			for _ = 1, count do
+				local object = self:read_object({}, format, ...)
+				if object == nil then
+					return nil
+				end
+				table.insert(objects, object)
+			end
+			return objects
 		end,
 		read = function (self, format)
 			local array = self:read_array(format)
@@ -675,23 +809,14 @@ do
 			end
 			return unpack(array)
 		end,
-		read_parser = function (self)
-			return xparser:read(self)
-		end,
-		read_parser_with_size = function (self)
-			local buffer = self:read_long_string()
-			if buffer == nil then
-				return nil
-			end
-			return xparser:read(xpack(buffer))
-		end,
 		write_buffer = function (self, buffer)
+			assert(type(buffer) == "string", "not a string buffer")
 			table.insert(self.buffer, buffer)
 			return self
 		end,
 		write_number = function (self, size, value)
-			assert(type(value) == "number", "number expected")
-			local frac
+			assert(type(value) == "number", "not a numeric value")
+			local frac = nil
 			for _ = 1, size do
 				value, frac = math.modf(value / 256)
 				table.insert(self.buffer, string.char(frac * 256))
@@ -699,11 +824,12 @@ do
 			return self
 		end,
 		write_byte = function (self, value)
-			assert(type(value) == "number", "number expected")
+			assert(type(value) == "number", "not a numeric value")
 			table.insert(self.buffer, string.char(value))
 			return self
 		end,
 		write_boolean = function (self, value)
+			assert(type(value) == "boolean", "not a boolean value")
 			return self:write_byte(value and 1 or 0)
 		end,
 		write_word = function (self, value)
@@ -713,32 +839,81 @@ do
 			return self:write_number(4, value)
 		end,
 		write_datetime = function (self, value)
-			return self:write_number(8, value)
-		end,
-		write_string = function (self, value)
-			assert(type(value) == "string", "string expected")
-			table.insert(self.buffer, string.char(#value))
-			table.insert(self.buffer, value)
+			assert(type(value) == "number", "not a numeric value")
+			if value < 0 or value == math.huge or value ~= value then
+				value = 0
+			end
+			local mantissa, exponent = 0, 0
+			if value ~= 0 then
+				mantissa, exponent = math.frexp(value)
+				mantissa = math.floor(0.5 + math.ldexp(mantissa * 2 - 1, 52))
+				exponent = exponent - 1 + 1023
+			end
+			local byte = {}
+			for _ = 1, 6 do
+				mantissa, value = math.modf(mantissa / 256)
+				table.insert(byte, value * 256)
+			end
+			table.insert(byte, mantissa + exponent % 16 * 16)
+			table.insert(byte, math.floor(exponent / 16))
+			table.insert(self.buffer, string.char(unpack(byte)))
 			return self
 		end,
-		write_long_string = function (self, value)
-			assert(type(value) == "string", "string expected")
-			self:write_number(4, #value)
-			table.insert(self.buffer, value)
+		write_timestamp = function (self, value)
+			assert(type(value) == "number", "not a numeric value")
+			return self:write_datetime(value / 86400.0 + 25569.0)
+		end,
+		write_string = function (self, len_size, value)
+			assert(type(value) == "string", "not a string value")
+			self:write_number(len_size, #value)
+			return self:write_buffer(value)
+		end,
+		write_byte_string = function (self, value)
+			return self:write_string(1, value)
+		end,
+		write_word_string = function (self, value)
+			return self:write_string(2, value)
+		end,
+		write_dword_string = function (self, value)
+			return self:write_string(4, value)
+		end,
+		write_version = function (self, value)
+			assert(type(value) == "number", "not a numeric value")
+			local version, frac = {}, nil
+			while value > 0 do
+				value, frac = math.modf(value / 256)
+				table.insert(version, 1, tostring(frac * 256))
+			end
+			return self:write_byte_string(table.concat(version, "."))
+		end,
+		write_parser = function (self, parser)
+			assert(type(parser) == "table" and parser.__class == xparser, "not a parser value")
+			if parser ~= null_parser then
+				self:write("zz4",
+					tostring(parser.key),
+					tostring(parser.value),
+					parser:count())
+				for _, node in parser:pairs() do
+					self:write_parser(node)
+				end
+			end
 			return self
+		end,
+		write_parser_with_size = function (self, parser)
+			local buffer = xpack()
+				:write_parser(parser)
+				:get_buffer()
+			return self:write_dword_string(buffer)
 		end,
 		write_array = function (self, format, array)
 			for i = 1, #format do
 				local fmt, value = format:sub(i, i), array[i]
-				if fmt == "s" then
-					self:write_string(value)
-				elseif fmt == "b" then
-					table.insert(self.buffer, string.char(value and 1 or 0))
-				elseif fmt == "1" then
-					assert(type(value) == "number", "number expected")
-					table.insert(self.buffer, string.char(value))
+				local ftype = self.formats[fmt]
+				if ftype then
+					self["write_" .. ftype](self, value)
 				else
-					self:write_number(tonumber(fmt), value)
+					fmt = assert(tonumber(fmt), "invalid format")
+					self:write_number(fmt, value)
 				end
 			end
 			return self
@@ -750,17 +925,19 @@ do
 			end
 			return self:write_array(format, array)
 		end,
+		write_objects = function (self, objects, format, ...)
+			local count = 0
+			for _, object in pairs(objects) do
+				count = count + 1
+			end
+			self:write_dword(count)
+			for _, object in pairs(objects) do
+				self:write_object(object, format, ...)
+			end
+			return self
+		end,
 		write = function (self, format, ...)
 			return self:write_array(format, {...})
-		end,
-		write_parser = function (self, parser)
-			return parser:write(self)
-		end,
-		write_parser_with_size = function (self, parser)
-			local buffer = xpack()
-				:write_parser(parser)
-				:get_buffer()
-			return self:write_long_string(buffer)
 		end,
 	}
 end
@@ -813,7 +990,7 @@ do
 			end
 			async_call(async, function ()
 				self.socket:send("")
-				log("info", "[%08x] close: %s:%s", self.uid, self.rhost, self.rport)
+				log("info", "[%08x] close", self.uid)
 				self.socket:close()
 				self.socket = nil
 				self.hard = nil
@@ -1034,7 +1211,7 @@ do
 				log("warn", "socks5: not CONNECT")
 				return
 			end
-			local host
+			local host = nil
 			if atyp == 0x01 then
 				local ip0, ip1, ip2, ip3 = self:receive(4)
 				if not ip0 then
@@ -1123,10 +1300,9 @@ do
 		end,
 		send_C = function (self, link)
 			local cmd_C = hardpack(0xC, link.uid, link.recv_seq)
-				:write_string(link.rhost)
-				:write_word(link.rport)
+				:write("s2", link.rhost, link.rport)
 			if not self:send(cmd_C) then
-				log("error", "send_C: failed")
+				log("error", "[%08x] send_C: failed", link.uid)
 				return false
 			end
 			link.hard = self
@@ -1136,7 +1312,7 @@ do
 			uid = link and link.uid or uid
 			local cmd_D = hardpack(0xD, uid, 0)
 			if not self:send(cmd_D) then
-				log("error", "send_D: failed")
+				log("error", "[%08x] send_D: failed", uid)
 				return false
 			end
 			return true
@@ -1145,45 +1321,44 @@ do
 			local cmd_B = hardpack(0xB, link.uid, seq)
 				:write_buffer(data)
 			if not self:send(cmd_B) then
-				log("error", "send_B: failed")
+				log("error", "[%08x] send_B: failed", link.uid)
 				return false
 			end
 			return true
 		end,
 		send_E = function (self, link)
 			if not link.hard then
-				log("error", "send_E: not hard")
+				log("error", "[%08x] send_E: not hard", link.uid)
 				return false
 			end
 			local cmd_E = hardpack(0xE, link.uid, link.recv_seq)
 			if not self:send(cmd_E) then
-				log("error", "send_E: failed")
+				log("error", "[%08x] send_E: failed", link.uid)
 				return false
 			end
 			return true
 		end,
 		send_A = function (self, link)
 			if not link.hard then
-				log("error", "send_A: not hard")
+				log("error", "[%08x] send_A: not hard", link.uid)
 				return false
 			end
 			local cmd_A = hardpack(0xA, link.uid, link.recv_seq)
 			if not self:send(cmd_A) then
-				log("error", "send_A: failed")
+				log("error", "[%08x] send_A: failed", link.uid)
 				return false
 			end
 			return true
 		end,
 		cmd_C = function (self, pack, link)
-			local rhost = pack:read_string()
-			local rport = pack:read_word()
+			local rhost, rport = pack:read("s2")
 			if (not link) and (pack.seq ~= 0) then
 				self:send_D(nil, pack.uid)
 				return true, "broken link"
 			end
 			xsocket.spawn(function ()
 				if not link then
-					log("info", "[%08x] forward: %s:%s", pack.uid, rhost, rport)
+					log("info", "[%08x] %s:%s forward: %s:%s", pack.uid, self.host, self.port, rhost, rport)
 					link = xlink:connect(pack.uid, rhost, rport)
 					if not link then
 						log("info", "[%08x] no response", pack.uid)
@@ -1248,8 +1423,7 @@ do
 			return true
 		end,
 		process = function (self)
-			local host, port = self.socket:getpeername()
-			log("info", "connected to %s:%s", host, port)
+			log("info", "connected to %s:%s", self.host, self.port)
 			while true do
 				local pack = self:receive()
 				if not pack then
@@ -1276,21 +1450,22 @@ do
 				end
 			end
 			self:stop()
-			log("info", "disconnected from %s:%s", host, port)
+			log("info", "disconnected from %s:%s", self.host, self.port)
 		end,
 	}
 	xhard_server = xclass
 	{
 		__parent = xhard,
 		start = function (class, host, port)
-			local socket = assert(xsocket.tcp())
-			assert(socket:bind(host, port))
-			assert(socket:listen(32))
-			log("info", "listening at tcp:%s:%s", socket:getsockname())
+			local server_socket = assert(xsocket.tcp())
+			assert(server_socket:bind(host, port))
+			assert(server_socket:listen(32))
+			log("info", "listening at tcp:%s:%s", server_socket:getsockname())
 			xsocket.spawn(
 				function ()
 					while true do
-						class(assert(socket:accept()))
+						local socket = assert(server_socket:accept())
+						class(socket, socket:getpeername())
 					end
 				end)
 		end,

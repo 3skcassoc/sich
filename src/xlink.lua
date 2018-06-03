@@ -54,7 +54,7 @@ xlink = xclass
 		end
 		async_call(async, function ()
 			self.socket:send("")
-			log("info", "[%08x] close: %s:%s", self.uid, self.rhost, self.rport)
+			log("info", "[%08x] close", self.uid)
 			self.socket:close()
 			self.socket = nil
 			self.hard = nil

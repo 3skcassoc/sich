@@ -1,5 +1,5 @@
 require "xlog"
-require "xcmd"
+require "xconst"
 require "xclass"
 require "xpackage"
 
@@ -9,23 +9,36 @@ xpacket = xclass
 {
 	__parent = xpackage,
 	
-	parse = function (self)
-		if not self[self.code] then
+	parse = function (self, vcore, vdata)
+		local read_proc = self[self.code]
+		if not read_proc then
 			return nil, "unknown"
 		end
 		
-		local result = self[self.code](self, {})
+		self.vcore = vcore
+		self.vdata = vdata
+		self.position = 1
+		local result = read_proc(self, {})
 		if not result then
 			return nil, "failed"
 		end
 		
-		if self.position <= #self.buffer then
-			return nil, "leftover"
+		if self:remain() > 0 then
+			return nil, "remain"
 		end
 		
 		result.code = self.code
 		result.id_from = self.id_from
 		result.id_to = self.id_to
+		return result
+	end,
+	
+	read_clients = function (self, result, format, ...)
+		local clients = self:read_objects({}, format, ...)
+		if not clients then
+			return nil
+		end
+		result.clients = clients
 		return result
 	end,
 	
@@ -40,7 +53,7 @@ xpacket = xclass
 			return result
 		end
 		
-		if not self:read_object(result, "ss4448s",
+		if not self:read_object(result, "ss444ts",
 			"nickname",
 			"country",
 			"score",
@@ -60,16 +73,24 @@ xpacket = xclass
 			elseif id == 0 then
 				break
 			end
-			local client = {
-				id = id,
-			}
-			if not self:read_object(client, "1sss",
+			local client = self:read_object({id = id}, "1sss",
 				"states",
 				"nickname",
 				"country",
 				"info")
-			then
+			if not client then
 				return nil
+			end
+			if self.vdata >= 0x00020100 then
+				if not self:read_object(client, "444td",
+					"score",
+					"games_played",
+					"games_win",
+					"last_game",
+					"pingtime")
+				then
+					return nil
+				end
 			end
 			table.insert(result.clients, client)
 		end
@@ -82,49 +103,35 @@ xpacket = xclass
 			elseif master_id == 0 then
 				break
 			end
-			local session = {
-				master_id = master_id
-			}
-			if not self:read_object(session, "4ss4b1",
-					"max_players",
-					"gamename",
-					"mapname",
-					"money",
-					"fog_of_war",
-					"battlefield")
+			local session = self:read_object({master_id = master_id}, "4ss4b1",
+				"max_players",
+				"gamename",
+				"mapname",
+				"money",
+				"fog_of_war",
+				"battlefield")
+			if not session then
+				return nil
+			end
+			if not self:read_clients(session, "4",
+				"id")
 			then
 				return nil
-			end
-			local count = self:read_dword()
-			if count == nil then
-				return nil
-			end
-			session.clients = {}
-			for i = 1, count do
-				local id = self:read_dword()
-				if id == nil then
-					return nil
-				end
-				session.clients[i] = id
 			end
 			table.insert(result.sessions, session)
 		end
 		return result
 	end,
 	
-	read_clients = function (self, result, format, ...)
-		local count = self:read_dword()
-		if count == nil then
-			return false
+	[xcmd.PING] = function (self, result)
+		if result.id_from ~= 0 then
+			return self:read_object(result, "d",
+				"pingtime")
+		else
+			return self:read_clients(result, "4d",
+				"id",
+				"pingtime")
 		end
-		result.clients = {}
-		for i = 1, count do
-			result.clients[i] = {}
-			if not self:read_object(result.clients[i], format, ...) then
-				return nil
-			end
-		end
-		return result
 	end,
 	
 	[xcmd.SERVER_CLIENTINFO] = function (self, result)
@@ -133,7 +140,7 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_CLIENTINFO] = function (self, result)
-		return self:read_object(result, "41ss4448s",
+		if not self:read_object(result, "41ss444ts",
 			"id",
 			"states",
 			"nickname",
@@ -143,6 +150,17 @@ xpacket = xclass
 			"games_win",
 			"last_game",
 			"info")
+		then
+			return nil
+		end
+		if self.vdata >= 0x00020100 then
+			if not self:read_object(result, "d",
+				"pingtime")
+			then
+				return nil
+			end
+		end
+		return result
 	end,
 	
 	[xcmd.SERVER_SESSION_MSG] = function (self, result)
@@ -166,7 +184,7 @@ xpacket = xclass
 	end,
 	
 	[xcmd.SERVER_REGISTER] = function (self, result)
-		return self:read_object(result, "ssssssss",
+		return self:read_object(result, "vvssssss",
 			"vcore",
 			"vdata",
 			"email",
@@ -182,7 +200,7 @@ xpacket = xclass
 	end,
 	
 	[xcmd.SERVER_AUTHENTICATE] = function (self, result)
-		return self:read_object(result, "sssss",
+		return self:read_object(result, "vvsss",
 			"vcore",
 			"vdata",
 			"email",
@@ -232,7 +250,7 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_SESSION_LEAVE] = function (self, result)
-		if not self:read_object(result, "b", "force") then
+		if not self:read_object(result, "b", "is_master") then
 			return nil
 		end
 		return self:read_clients(result, "41",
@@ -273,11 +291,26 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_CONNECTED] = function (self, result)
-		return self:read_object(result, "sss1",
+		if not self:read_object(result, "sss1",
 			"nickname",
 			"country",
 			"info",
 			"states")
+		then
+			return nil
+		end
+		if self.vdata >= 0x00020100 then
+			if not self:read_object(result, "444td",
+				"score",
+				"games_played",
+				"games_win",
+				"last_game",
+				"pingtime")
+			then
+				return nil
+			end
+		end
+		return result
 	end,
 	
 	[xcmd.USER_DISCONNECTED] = function (self, result)
@@ -292,7 +325,7 @@ xpacket = xclass
 	[xcmd.USER_USER_EXIST] = function (self, result)
 		return self:read_object(result, "sb",
 			"email",
-			"exists")
+			"exist")
 	end,
 	
 	[xcmd.SERVER_SESSION_UPDATE] = function (self, result)
@@ -315,22 +348,15 @@ xpacket = xclass
 	end,
 	
 	[xcmd.SERVER_VERSION_INFO] = function (self, result)
-		return self:read_object(result, "s",
+		return self:read_object(result, "v",
 			"vdata")
 	end,
 	
 	[xcmd.USER_VERSION_INFO] = function (self, result)
-		if not self:read_object(result, "ss",
+		return self:read_object(result, "vvq",
 			"vcore",
-			"vdata")
-		then
-			return nil
-		end
-		result.parser = self:read_parser_with_size()
-		if not result.parser then
-			return nil
-		end
-		return result
+			"vdata",
+			"parser")
 	end,
 	
 	[xcmd.SERVER_SESSION_CLOSE] = function (self, result)
@@ -338,7 +364,7 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_SESSION_CLOSE] = function (self, result)
-		if not self:read_object(result, "8",
+		if not self:read_object(result, "t",
 			"timestamp")
 		then
 			return nil
@@ -362,15 +388,14 @@ xpacket = xclass
 			elseif mark ~= 1 then
 				break
 			end
-			local client = {}
-			if not self:read_object(client, "ss4448",
+			local client = self:read_object({}, "ss444t",
 				"nickname",
 				"country",
 				"score",
 				"games_played",
 				"games_win",
 				"last_game")
-			then
+			if not client then
 				return nil
 			end
 			table.insert(result.clients, client)
@@ -387,11 +412,26 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_UPDATE_INFO] = function (self, result)
-		return self:read_object(result, "sss1",
+		if not self:read_object(result, "sss1",
 			"nickname",
 			"country",
 			"info",
 			"states")
+		then
+			return nil
+		end
+		if self.vdata >= 0x00020100 then
+			if not self:read_object(result, "444td",
+				"score",
+				"games_played",
+				"games_win",
+				"last_game",
+				"pingtime")
+			then
+				return nil
+			end
+		end
+		return result
 	end,
 	
 	[xcmd.SERVER_SESSION_KICK] = function (self, result)
@@ -422,39 +462,70 @@ xpacket = xclass
 	end,
 	
 	[xcmd.SERVER_SESSION_PARSER] = function (self, result)
-		result.parser_id = self:read_dword()
-		if result.parser_id == nil then
-			return nil
-		end
-		result.parser = self:read_parser()
-		if result.parser == nil then
-			return nil
-		end
-		return result
+		return self:read_object(result, "4p",
+			"parser_id",
+			"parser")
 	end,
 	
 	[xcmd.USER_SESSION_PARSER] = function (self, result)
-		result.parser_id = self:read_dword()
-		if result.parser_id == nil then
-			return nil
-		end
-		result.parser = self:read_parser()
-		if result.parser == nil then
-			return nil
-		end
-		self:read_dword()
-		return result
+		return self:read_object(result, "4p4",
+			"parser_id",
+			"parser",
+			"unk_dw")
 	end,
 	
 	[xcmd.USER_SESSION_RECREATE] = function (self, result)
-		result.parser = self:read_parser_with_size()
-		if not result.parser then
-			return nil
-		end
-		return result
+		return self:read_object(result, "q",
+			"parser")
 	end,
 	
 	[xcmd.USER_SESSION_REJOIN] = function (self, result)
 		return result
+	end,
+	
+	[xcmd.LAN_PARSER] = function (self, result)
+		return self:read_object(result, "4p",
+			"parser_id",
+			"parser")
+	end,
+	
+	[xcmd.LAN_CLIENT_INFO] = function (self, result)
+		return self:read_object(result, "wwb41411",
+			"player",
+			"nickname",
+			"spectator",
+			"id",
+			"team",
+			"score",
+			"field_1C",
+			"field_1D")
+	end,
+	
+	[xcmd.LAN_SERVER_INFO] = function (self, result)
+		return self:read_object(result, "ww44wb1b4",
+			"gamename",
+			"mapname",
+			"max_players",
+			"protocol_ver",
+			"host",
+			"secured",
+			"battlefield",
+			"fog_of_war",
+			"money")
+	end,
+	
+	[xcmd.LAN_DO_START] = function (self, result)
+	end,
+	
+	[xcmd.LAN_DO_START_GAME] = function (self, result)
+	end,
+	
+	[xcmd.LAN_DO_READY] = function (self, result)
+	end,
+	
+	[xcmd.LAN_DO_READY_DONE] = function (self, result)
+	end,
+	
+	[xcmd.LAN_RECORD] = function (self, result)
 	end,
 }

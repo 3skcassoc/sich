@@ -1,5 +1,5 @@
 require "xlog"
-require "xcmd"
+require "xconst"
 require "xkeys"
 require "xclass"
 require "xconfig"
@@ -31,21 +31,19 @@ local custom_core = xclass
 	end,
 	
 	process = function (self, remote, packet)
-		local request, err = packet:parse()
+		local request, err = packet:parse(remote.vcore, remote.vdata)
 		if not request then
 			return log("error", "packet parse: %s", err)
 		end
-		
-		if not self[request.code] then
-			return log("warn", "request is not allowed or not implemented: [0x04X] %s", request.code, xcmd[request.code] or "UNKNOWN")
+		local code = request.code
+		if not self[code] then
+			return log("warn", "request is not allowed or not implemented: [0x04X] %s", code, xcmd[code] or "UNKNOWN")
 		end
-		return self[request.code](self, remote, request)
+		return self[code](self, remote, request)
 	end,
 }
 
-local cores = {}
-
-cores["1.0.0.7"] = xclass
+local server_core = xclass
 {
 	__parent = custom_core,
 	
@@ -57,7 +55,7 @@ cores["1.0.0.7"] = xclass
 	
 	disconnected = function (self, remote)
 		if remote.session then
-			remote.session:kill(remote)
+			remote.session:leave(remote)
 		end
 		remote:set_state("online", false)
 		self.clients[remote.id] = nil
@@ -67,22 +65,22 @@ cores["1.0.0.7"] = xclass
 	end,
 	
 	check_session = function (self, remote)
-		if remote.session then
-			return true
+		if not remote.session then
+			remote.log("warn", "remote has no session")
+			return false
 		end
-		remote.log("warn", "remote has no session")
-		return false
+		return true
 	end,
 	
 	check_session_master = function (self, remote)
 		if not self:check_session(remote) then
 			return false
 		end
-		if remote.session.master == remote then
-			return true
+		if remote.session.master ~= remote then
+			remote.log("debug", "remote is not session master")
+			return false
 		end
-		remote.log("debug", "remote is not session master")
-		return false
+		return true
 	end,
 	
 	session_action = function (self, action, remote, request)
@@ -103,8 +101,9 @@ cores["1.0.0.7"] = xclass
 		if not self:check_client(request.id) then
 			return
 		end
-		return xpackage(xcmd.USER_CLIENTINFO, 0, 0)
-			:write_object(self.clients[request.id], "41ss4448s",
+		local client = self.clients[request.id]
+		local response = xpackage(xcmd.USER_CLIENTINFO, 0, 0)
+			:write_object(client, "41ss444ts",
 				"id",
 				"states",
 				"nickname",
@@ -114,6 +113,12 @@ cores["1.0.0.7"] = xclass
 				"games_win",
 				"last_game",
 				"info")
+		if remote.vdata >= 0x00020100 then
+			response
+				:write_object(client, "d",
+					"pingtime")
+		end
+		return response
 			:transmit(remote)
 	end,
 	
@@ -123,7 +128,7 @@ cores["1.0.0.7"] = xclass
 	
 	[xcmd.SERVER_MESSAGE] = function (self, remote, request)
 		xpackage(xcmd.USER_MESSAGE, request.id_from, request.id_to)
-			:write_string(request.message)
+			:write("s", request.message)
 			:dispatch(remote)
 	end,
 	
@@ -160,10 +165,10 @@ cores["1.0.0.7"] = xclass
 	
 	[xcmd.SERVER_VERSION_INFO] = function (self, remote, request)
 		return xpackage(xcmd.USER_VERSION_INFO, 0, 0)
-			:write("ss4",
+			:write("vvq",
 				remote.vcore,
 				remote.vdata,
-				0)
+				null_parser)
 			:transmit(remote)
 	end,
 	
@@ -174,15 +179,26 @@ cores["1.0.0.7"] = xclass
 	[xcmd.SERVER_GET_TOP_USERS] = function (self, remote, request)
 		remote.log("debug", "get top users")
 		local count = request.count
+		local accounts = {}
+		for _, account in register:pairs() do
+			if not account.banned then
+				table.insert(accounts, account)
+			end
+		end
+		table.sort(accounts, function (a, b)
+			a = a.score * 10000 + a.games_win
+			b = b.score * 10000 + b.games_win
+			return a > b
+		end)
 		local response = xpackage(xcmd.USER_GET_TOP_USERS, 0, 0)
-		for _, client in pairs(self.clients) do
+		for _, account in ipairs(accounts) do
 			if count == 0 then
 				break
 			end
 			count = count - 1
 			response
 				:write_byte(1)
-				:write_object(client, "ss4448",
+				:write_object(account, "ss444t",
 					"nickname",
 					"country",
 					"score",
@@ -196,18 +212,28 @@ cores["1.0.0.7"] = xclass
 	end,
 	
 	[xcmd.SERVER_UPDATE_INFO] = function (self, remote, request)
-		xregister.update(remote,
-			remote.email,
-			request.password,
-			request.nickname,
-			request.country,
-			request.info)
-		return xpackage(xcmd.USER_UPDATE_INFO, remote.id, 0)
+		remote.log("info", "updating client info")
+		remote.password = request.password
+		remote.nickname = request.nickname
+		remote.country = request.country
+		remote.info = request.info
+		register:update(remote)
+		local response = xpackage(xcmd.USER_UPDATE_INFO, remote.id, 0)
 			:write_object(remote, "sss1",
 				"nickname",
 				"country",
 				"info",
 				"states")
+		if remote.vdata >= 0x00020100 then
+			response
+				:write_object(remote, "444td",
+					"score",
+					"games_played",
+					"games_win",
+					"last_game",
+					"pingtime")
+		end
+		return response
 			:broadcast(remote)
 	end,
 	
@@ -218,24 +244,44 @@ cores["1.0.0.7"] = xclass
 	[xcmd.SERVER_SESSION_CLSCORE] = function (self, remote, request)
 		return self:master_session_action("clscore", remote, request)
 	end,
+	
+	[xcmd.SERVER_SESSION_PARSER] = function (self, remote, request)
+		if request.parser_id == xgc.LAN_ROOM_SERVER_DATASYNC then
+			self:master_session_action("datasync", remote, request)
+		end
+		return xpackage(xcmd.USER_SESSION_PARSER, request.id_from, request.id_to)
+			:write_object(request, "4p",
+				"parser_id",
+				"parser")
+			:write_dword(0)
+			:session_dispatch(remote)
+	end,
+	
+	[xcmd.LAN_PARSER] = function (self, remote, request)
+		if request.parser_id == xgc.LAN_GAME_SESSION_RESULTS
+		or request.parser_id == xgc.LAN_GAME_SURRENDER_CONFIRM then
+			return self:master_session_action("results", remote, request)
+		end
+	end,
 }
 
+local function version_str(...)
+	local count = select("#", ...)
+	return xpack()
+		:write(("v"):rep(count), ...)
+		:reader()
+		:read(("s"):rep(count))
+end
+
 servers = {}
-local defcore = "1.0.0.7"
-local datas = xconfig.datas or {}
 
 local function get_server(vcore, vdata)
-	if not cores[vcore] then
-		vcore = defcore
-	end
-	if datas[vdata] then
-		vdata = datas[vdata]
-	end
+	vcore, vdata = version_str(vcore, vdata)
 	local tag = vcore .. "/" .. vdata
 	local server = servers[tag]
 	if not server then
 		log("debug", "creating new server: %s", tag)
-		server = cores[vcore]()
+		server = server_core()
 		servers[tag] = server
 	end
 	return server
@@ -256,47 +302,55 @@ local auth_core = xclass
 	end,
 	
 	try_user_auth = function (self, remote, request)
+		-- 3 Incorrect Internet game key
+		-- 4 (core) Your version is outdated. Do you want to update it automatically?
+		-- 5 (data) Your version of the game is outdated. Please close the program to permit the automatic
+		--   update service of your distribution platform to bring the game up to date.
 		if not xkeys(request.cdkey) then
 			remote.log("info", "invalid cd key")
 			return 3
 		end
-		if not cores[request.vcore] then
-			-- 4 core version is outdated
-			remote.log("warn", "requested unknown core version: %s", request.vcore)
-		end
-		if not datas[request.vdata] then
-			-- 5 data version is outdated
-			remote.log("debug", "requested unknown data version: %s", request.vdata)
-		end
 		if request.code == xcmd.SERVER_REGISTER then
-			-- 6 incorrect registration data
-			if not xregister.new(remote, request.email, request.password, request.cdkey, request.nickname, request.country, request.info) then
-				remote.log("info", "email is already in use: %s", request.email)
+			-- 1 This e-mail is already in use
+			-- 6 Incorrect registration data
+			if not register:new(remote, request) then
+				remote.log("error", "email is already in use: %s", request.email)
 				return 1
 			end
 		else
-			if not xregister.get(remote, request.email) then
-				remote.log("info", "email is not registered: %s", request.email)
+			-- 1 Invalid password
+			-- 2 This account is blocked
+			if not register:get(remote, request.email) then
+				remote.log("error", "email is not registered: %s", request.email)
 				return 1
-			elseif remote.blocked then
-				remote.log("info", "account is blocked: %s", request.email)
+			elseif remote.banned then
+				remote.log("info", "account is banned: %s", request.email)
 				return 2
 			elseif remote.password ~= request.password then
 				remote.log("info", "incorrect password for: %s", request.email)
 				return 1
+			else
+				for _, server in pairs(servers) do
+					if server.clients[remote.id] then
+						remote.log("info", "already logged in: %s", request.email)
+						return 2
+					end
+				end
 			end
 		end
 		return 0
 	end,
 	
 	user_auth = function (self, remote, request)
-		local response_code = ( request.code == xcmd.SERVER_REGISTER ) and xcmd.USER_REGISTER or xcmd.USER_AUTHENTICATE
-		local error_code = self:try_user_auth(remote, request)
+		local response_code = (request.code == xcmd.SERVER_REGISTER) and xcmd.USER_REGISTER or xcmd.USER_AUTHENTICATE
+		remote.log("debug", "auth: email=%s, vcore=%s, vdata=%s", request.email, version_str(request.vcore, request.vdata))
 		
-		local response = xpackage(response_code, remote.id, 0)
+		local error_code = self:try_user_auth(remote, request)
+		local response = xpackage(response_code, remote.id or 0, 0)
 			:write_byte(error_code)
 		if error_code ~= 0 then
-			return response:transmit(remote)
+			return response
+				:transmit(remote)
 		end
 		
 		remote.log = xlog("xclient", remote.nickname)
@@ -307,7 +361,7 @@ local auth_core = xclass
 		get_server(request.vcore, request.vdata):connected(remote)
 		
 		response
-			:write_object(remote, "ss4448s",
+			:write_object(remote, "ss444ts",
 				"nickname",
 				"country",
 				"score",
@@ -317,12 +371,22 @@ local auth_core = xclass
 				"info")
 		
 		for _, client in pairs(remote.server.clients) do
-			response:write_object(client, "41sss",
-				"id",
-				"states",
-				"nickname",
-				"country",
-				"info")
+			response
+				:write_object(client, "41sss",
+					"id",
+					"states",
+					"nickname",
+					"country",
+					"info")
+			if remote.vdata >= 0x00020100 then
+				response
+					:write_object(client, "444td",
+						"score",
+						"games_played",
+						"games_win",
+						"last_game",
+						"pingtime")
+			end
 		end
 		response
 			:write_dword(0)
@@ -338,27 +402,42 @@ local auth_core = xclass
 						"money",
 						"fog_of_war",
 						"battlefield")
-					:write_dword(session:get_clients_count())
-				for client_id in pairs(session.clients) do
-					response:write_dword(client_id)
-				end
+					:write_objects(session.clients, "4",
+						"id")
 			end
 		end
-		
 		response
 			:write_dword(0)
 			:transmit(remote)
 		
-		xpackage(xcmd.USER_CONNECTED, remote.id, 0)
+		response = xpackage(xcmd.USER_CONNECTED, remote.id, 0)
 			:write_object(remote, "sss1",
 				"nickname",
 				"country",
 				"info",
 				"states")
+		if remote.vdata >= 0x00020100 then
+			response
+				:write_object(remote, "444td",
+					"score",
+					"games_played",
+					"games_win",
+					"last_game",
+					"pingtime")
+		end
+		response
 			:broadcast(remote)
 		
+		local message =
+		{
+			"%color(00DD00)%",
+			VERSION,
+			" powered by ",
+			_VERSION,
+			"%color(default)%"
+		}
 		xpackage(xcmd.USER_MESSAGE, 0, 0)
-			:write_string(("%%color(FFFFFF)%% %s powered by %s"):format(VERSION, _VERSION))
+			:write("s", table.concat(message))
 			:transmit(remote)
 		
 		return remote.log("info", "logged in")
@@ -376,16 +455,16 @@ local auth_core = xclass
 		return xpackage(xcmd.USER_USER_EXIST, 0, 0)
 			:write("sb",
 				request.email,
-				xregister.find(request.email))
+				register:exist(request.email))
 			:transmit(remote)
 	end,
 	
 	[xcmd.SERVER_FORGOT_PSW] = function (self, remote, request)
-		local user = {}
-		if not xregister.get(user, request.email) then
+		local id, account = register:find(request.email)
+		if not id then
 			return
 		end
-		return remote.log("info", "user forgot password, email=%s, password=%s", user.email, user.password)
+		return remote.log("info", "user #%d forgot password, email=%s, password=%s", id, account.email, account.password)
 	end,
 }
 
@@ -396,29 +475,34 @@ xserver = function (socket)
 	remote.log("info", "connected")
 	auth_server:connected(remote)
 	
+	local server_process =
+	{
+		[xcmd.LAN_PARSER] = true,
+	}
 	while true do
 		local packet = xpacket:receive(socket)
 		if not packet then
 			break
 		end
+		
 		local code = packet.code
 		local session = remote.session
 		if 0x0190 <= code and code <= 0x01F4 then
 			packet:dump_head(remote.log)
-			if code ~= xcmd.SERVER_SESSION_PARSER then
-				remote.server:process(remote, packet)
-			elseif session then
-				packet.code = xcmd.USER_SESSION_PARSER
-				packet:session_dispatch(remote)
-			end
+			remote.server:process(remote, packet)
 		elseif session then
+			if server_process[code] then
+				remote.server:process(remote, packet)
+			end
+			
+			local buffer = packet:get()
 			local id_to = packet.id_to
 			if id_to ~= 0 then
-				if session.clients[id_to] then
-					packet:transmit(session.clients[id_to])
+				local client = session.clients[id_to]
+				if client then
+					client.socket:send(buffer)
 				end
 			else
-				local buffer = packet:get()
 				for _, client in pairs(session.clients) do
 					if client ~= remote then
 						client.socket:send(buffer)

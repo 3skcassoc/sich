@@ -5,60 +5,81 @@ local log = xlog("xparser")
 
 xparser = xclass
 {
-	read = function (class, package)
-		local key = package:read_long_string()
-		local value = package:read_long_string()
-		local count = package:read_dword()
-		if not ( key and value and count ) then
-			return
-		end
-		local self = class(key, value)
-		for _ = 1, count do
-			local node = class:read(package)
-			if not node then
-				return nil
-			end
-			self:append(node)
-		end
+	__create = function (self, key, value)
+		self.key = assert(key, "no key")
+		self.value = assert(value, "no value")
 		return self
 	end,
 	
-	__create = function (self, key, value)
-		self.key = key
-		self.value = value
-		self.nodes = {}
-		return self
+	count = function (self)
+		return #self
+	end,
+	
+	pairs = function (self)
+		return ipairs(self)
 	end,
 	
 	append = function (self, node)
-		table.insert(self.nodes, node)
-		return self
+		table.insert(self, node)
+		return node
+	end,
+	
+	find = function (self, key)
+		for _, node in self:pairs() do
+			if node.key == key then
+				return node
+			end
+		end
+		return nil
 	end,
 	
 	add = function (self, key, value)
 		return self:append(xparser(key, value))
 	end,
 	
-	write = function (self, package)
-		package
-			:write_long_string(self.key)
-			:write_long_string(tostring(self.value))
-			:write_dword(#self.nodes)
-		for _, node in ipairs(self.nodes) do
-			node:write(package)
+	get = function (self, key, default)
+		local node = self:find(key)
+		if node then
+			return node.value
 		end
-		return package
+		return default
 	end,
 	
-	dump = function (self, subnode)
-		if not log:check("debug") then
+	set = function (self, key, value)
+		local node = self:find(key)
+		if node then
+			node.value = value
+			return node
+		end
+		return self:add(key, value)
+	end,
+	
+	remove = function (self, key)
+		local i = self:count()
+		while i > 0 do
+			if self[i].key == key then
+				table.remove(self, i)
+			else
+				i = i - 1
+			end
+		end
+	end,
+	
+	dump = function (self, flog)
+		flog = flog or log
+		if not flog:check("debug") then
 			return
 		end
-		log("debug", "%skey = %q, value = %q", (subnode and "" or "PARSER: "), self.key, self.value)
-		log:inc()
-		for _, node in ipairs(self.nodes) do
-			node:dump(true)
+		local function do_dump(parser)
+			flog("debug", "key = %q, value = %q", parser.key, parser.value)
+			flog:inc(2)
+			for _, node in parser:pairs() do
+				do_dump(node)
+			end
+			flog:dec(2)
 		end
-		log:dec()
+		return do_dump(self)
 	end,
 }
+
+null_parser = xparser("", "")

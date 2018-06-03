@@ -145,7 +145,7 @@ xsocks = xclass
 			log("warn", "socks5: not CONNECT")
 			return
 		end
-		local host
+		local host = nil
 		if atyp == 0x01 then
 			local ip0, ip1, ip2, ip3 = self:receive(4)
 			if not ip0 then

@@ -66,10 +66,9 @@ xhard = xclass
 	
 	send_C = function (self, link)
 		local cmd_C = hardpack(0xC, link.uid, link.recv_seq)
-			:write_string(link.rhost)
-			:write_word(link.rport)
+			:write("s2", link.rhost, link.rport)
 		if not self:send(cmd_C) then
-			log("error", "send_C: failed")
+			log("error", "[%08x] send_C: failed", link.uid)
 			return false
 		end
 		link.hard = self
@@ -80,7 +79,7 @@ xhard = xclass
 		uid = link and link.uid or uid
 		local cmd_D = hardpack(0xD, uid, 0)
 		if not self:send(cmd_D) then
-			log("error", "send_D: failed")
+			log("error", "[%08x] send_D: failed", uid)
 			return false
 		end
 		return true
@@ -90,7 +89,7 @@ xhard = xclass
 		local cmd_B = hardpack(0xB, link.uid, seq)
 			:write_buffer(data)
 		if not self:send(cmd_B) then
-			log("error", "send_B: failed")
+			log("error", "[%08x] send_B: failed", link.uid)
 			return false
 		end
 		return true
@@ -98,12 +97,12 @@ xhard = xclass
 	
 	send_E = function (self, link)
 		if not link.hard then
-			log("error", "send_E: not hard")
+			log("error", "[%08x] send_E: not hard", link.uid)
 			return false
 		end
 		local cmd_E = hardpack(0xE, link.uid, link.recv_seq)
 		if not self:send(cmd_E) then
-			log("error", "send_E: failed")
+			log("error", "[%08x] send_E: failed", link.uid)
 			return false
 		end
 		return true
@@ -111,27 +110,26 @@ xhard = xclass
 	
 	send_A = function (self, link)
 		if not link.hard then
-			log("error", "send_A: not hard")
+			log("error", "[%08x] send_A: not hard", link.uid)
 			return false
 		end
 		local cmd_A = hardpack(0xA, link.uid, link.recv_seq)
 		if not self:send(cmd_A) then
-			log("error", "send_A: failed")
+			log("error", "[%08x] send_A: failed", link.uid)
 			return false
 		end
 		return true
 	end,
 	
 	cmd_C = function (self, pack, link)
-		local rhost = pack:read_string()
-		local rport = pack:read_word()
+		local rhost, rport = pack:read("s2")
 		if (not link) and (pack.seq ~= 0) then
 			self:send_D(nil, pack.uid)
 			return true, "broken link"
 		end
 		xsocket.spawn(function ()
 			if not link then
-				log("info", "[%08x] forward: %s:%s", pack.uid, rhost, rport)
+				log("info", "[%08x] %s:%s forward: %s:%s", pack.uid, self.host, self.port, rhost, rport)
 				link = xlink:connect(pack.uid, rhost, rport)
 				if not link then
 					log("info", "[%08x] no response", pack.uid)
@@ -201,8 +199,7 @@ xhard = xclass
 	end,
 	
 	process = function (self)
-		local host, port = self.socket:getpeername()
-		log("info", "connected to %s:%s", host, port)
+		log("info", "connected to %s:%s", self.host, self.port)
 		while true do
 			local pack = self:receive()
 			if not pack then
@@ -229,7 +226,7 @@ xhard = xclass
 			end
 		end
 		self:stop()
-		log("info", "disconnected from %s:%s", host, port)
+		log("info", "disconnected from %s:%s", self.host, self.port)
 	end,
 }
 
@@ -238,14 +235,15 @@ xhard_server = xclass
 	__parent = xhard,
 	
 	start = function (class, host, port)
-		local socket = assert(xsocket.tcp())
-		assert(socket:bind(host, port))
-		assert(socket:listen(32))
-		log("info", "listening at tcp:%s:%s", socket:getsockname())
+		local server_socket = assert(xsocket.tcp())
+		assert(server_socket:bind(host, port))
+		assert(server_socket:listen(32))
+		log("info", "listening at tcp:%s:%s", server_socket:getsockname())
 		xsocket.spawn(
 			function ()
 				while true do
-					class(assert(socket:accept()))
+					local socket = assert(server_socket:accept())
+					class(socket, socket:getpeername())
 				end
 			end)
 	end,

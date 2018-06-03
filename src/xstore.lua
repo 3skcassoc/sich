@@ -14,68 +14,83 @@ end
 local function do_serialize(value, result, indent)
 	local value_type = type(value)
 	if value_type == "string" then
-		return table.insert(result, (("%q"):format(value):gsub("\\\n", "\\n")))
+		table.insert(result, (("%q"):format(value):gsub("\\\n", "\\n")))
 	elseif value_type == "nil" or value_type == "boolean" or value_type == "number" then
-		return table.insert(result, tostring(value))
+		table.insert(result, tostring(value))
 	elseif value_type ~= "table" then
-		return error("can not serialize: " .. value_type)
+		error("can not serialize: " .. value_type)
+	elseif next(value) == nil then
+		table.insert(result, "{}")
+	else
+		local keys = {}
+		for key in pairs(value) do
+			table.insert(keys, key)
+		end
+		table.sort(keys, function (a, b)
+			local ta, tb = type(a), type(b)
+			if ta ~= tb then
+				a, b = ta, tb
+			elseif ta == "string" then
+				local na, nb = tonumber(a), tonumber(b)
+				if na and nb then
+					a, b = na, nb
+				end
+			elseif ta ~= "number" then
+				a, b = tostring(a), tostring(b)
+			end
+			return a < b
+		end)
+		table.insert(result, "{\n")
+		for _, key in ipairs(keys) do
+			table.insert(result, ("\t"):rep(indent + 1))
+			table.insert(result, "[")
+			do_serialize(key, result, indent + 1)
+			table.insert(result, "] = ")
+			do_serialize(value[key], result, indent + 1)
+			table.insert(result, ",\n")
+		end
+		table.insert(result, ("\t"):rep(indent))
+		table.insert(result, "}")
 	end
-	if next(value) == nil then
-		return table.insert(result, "{}")
-	end
-	table.insert(result, "{\n")
-	for key, val in pairs(value) do
-		table.insert(result, ("\t"):rep(indent + 1))
-		table.insert(result, "[")
-		do_serialize(key, result, indent + 1)
-		table.insert(result, "] = ")
-		do_serialize(val, result, indent + 1)
-		table.insert(result, ",\n")
-	end
-	table.insert(result, ("\t"):rep(indent))
-	return table.insert(result, "}")
+	return result
 end
 
 local function serialize(value)
-	local result = {}
-	do_serialize(value, result, 0)
-	return table.concat(result)
+	return table.concat(do_serialize(value, {}, 0))
 end
 
-local path = arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$")
-
-if not path then
-	path = "."
-end
-
-log("info", "path = %s", path)
+local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
+path = path:gsub('%%', '%%%%') .. "/%s.store"
+log("debug", "path: %s", path)
 
 xstore =
 {
 	load = function (name, default)
-		local fun, msg = loadfile(path .. "/" .. name .. ".store")
-		if not fun then
+		name = path:format(name)
+		log("debug", "loading %q", name)
+		local file, msg = io.open(name, "r")
+		if not file then
 			log("debug", msg)
 			return default
 		end
-		log("info", "loading %q", name)
+		file:close()
+		local fun = assert(loadfile(name))
 		setfenv(fun, _G)
-		local ok, data = pcall(fun)
-		if not ok then
-			log("error", data)
-			return default
-		end
+		local _, data = assert(pcall(fun))
 		return data
 	end,
 	
 	save = function (name, data)
-		log("info", "saving %q", name)
+		name = path:format(name)
+		log("debug", "saving %q", name)
 		local str = serialize(data)
-		local file, msg = io.open(path .. "/" .. name .. ".store", "w")
+		local file, msg = io.open(name, "w")
 		if not file then
-			return log("error", msg)
+			log("error", msg)
+			return false
 		end
-		file:write("return ", str)
-		return file:close()
+		file:write("return ", str, "\n")
+		file:close()
+		return true
 	end,
 }

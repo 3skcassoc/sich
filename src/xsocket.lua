@@ -18,6 +18,11 @@ local wrapper wrapper = setmetatable(
 		return nil, err
 	end,
 	
+	bind = function (self, host, port)
+		log("debug", "socket bind: %s:%s", host, port)
+		return self.sock:bind(host, port)
+	end,
+	
 	listen = function (self, backlog)
 		local ok, err = self.sock:listen(backlog)
 		if not ok then
@@ -192,8 +197,8 @@ end
 local function append(thread, success, sock, set)
 	if not success then
 		xsocket.threads = xsocket.threads - 1
-		log("error", "thread crashed: %s", sock)
-		return print(debug.traceback(thread))
+		log("error", "thread crashed: %s", debug.traceback(thread, sock))
+		return
 	end
 	if not sock then
 		xsocket.threads = xsocket.threads - 1
@@ -273,11 +278,11 @@ xsocket =
 	end,
 	
 	sleep = function (sec)
-		coroutine.yield(socket.gettime() + sec, slept)
+		coroutine.yield(xsocket.gettime() + sec, slept)
 	end,
 	
 	sleep_until = function (ts)
-		if ts > socket.gettime() then
+		if ts > xsocket.gettime() then
 			coroutine.yield(ts, slept)
 		end
 	end,
@@ -305,7 +310,7 @@ xsocket =
 				end
 			end
 			if #slept > 0 then
-				local now = socket.gettime()
+				local now = xsocket.gettime()
 				for _, ts in rpairs(slept) do
 					if ts <= now then
 						local assoc = slept[ts]
@@ -321,7 +326,7 @@ xsocket =
 				for _, ts in ipairs(slept) do
 					timeout = math.min(timeout, ts)
 				end
-				timeout = math.max(0, timeout - socket.gettime())
+				timeout = math.max(0, timeout - xsocket.gettime())
 			end
 			local read, write = socket.select(recvt, sendt, timeout)
 			for _, sock in ipairs(read) do

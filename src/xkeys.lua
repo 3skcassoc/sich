@@ -4,14 +4,20 @@ require "xstore"
 local log = xlog("xkeys")
 
 local keystore = xstore.load("keys")
-if keystore then
-	local keys = {}
-	for _, key in ipairs(keystore) do
-		keys[key] = true
+if type(keystore) == "function" then
+	xkeys = keystore
+elseif type(keystore) == "table" then
+	local keys = nil
+	if #keystore == 0 then
+		keys = keystore
+	else
+		keys = {}
+		for _, key in ipairs(keystore) do
+			keys[key] = true
+		end
 	end
-	keystore = nil
 	xkeys = function (cdkey)
-		return keys[cdkey]
+		return keys[cdkey] and true or false
 	end
 else
 	log("info", "disabled")
@@ -19,3 +25,4 @@ else
 		return true
 	end
 end
+keystore = nil

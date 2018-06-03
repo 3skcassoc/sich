@@ -45,12 +45,12 @@ local function log_print(self, level, fmt, ...)
 end
 
 local function log_inc(self, value)
-	self.indent = self.indent + ( value or 1 )
+	self.indent = self.indent + (value or 1)
 	return self
 end
 
 local function log_dec(self, value)
-	self.indent = self.indent - ( value or 1 )
+	self.indent = self.indent - (value or 1)
 	return self
 end
 

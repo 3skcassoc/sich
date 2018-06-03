@@ -11,6 +11,7 @@ local function include(self, name)
 		end
 		local req = line:match("^require.-(%w+).-$")
 		if req then
+			assert(not do_end)
 			include(self, req)
 		elseif not line:match("^%s*$") then
 			if not do_end then
