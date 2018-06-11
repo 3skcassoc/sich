@@ -3,7 +3,7 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.2.1"
+VERSION = "Sich v0.2.3"
 
 -- // xclass // --
 do
@@ -1909,7 +1909,8 @@ do
 			self.real_pass = ""
 			self.locked = false
 			self.closed = false
-			self.master = remote
+			self.server = remote.server
+			self.master_id = remote.id
 			self.max_players = request.max_players
 			self.password = request.password
 			self.gamename = request.gamename
@@ -1968,14 +1969,14 @@ do
 			remote:set_state("session", true)
 			return xpackage(xcmd.USER_SESSION_JOIN, remote.id, 0)
 				:write("41",
-					self.master.id,
+					self.master_id,
 					remote.states)
 				:broadcast(remote)
 		end,
 		leave = function (self, remote)
 			local new_master = nil
 			local new_clients = {}
-			local is_master = (self.master == remote)
+			local is_master = (self.master_id == remote.id)
 			if not is_master then
 				remote:set_state("played", false)
 				remote:set_state("session", false)
@@ -2011,7 +2012,7 @@ do
 			self.clients[remote.id] = nil
 			if self:get_clients_count() == 0 then
 				remote.log("info", "destroying room: %s", self.real_name)
-				remote.server.sessions[remote.id] = nil
+				self.server.sessions[self.master_id] = nil
 			end
 			if new_master then
 				remote.log("info", "new session master: %s", new_master.nickname)
@@ -2063,7 +2064,7 @@ do
 				:broadcast(remote)
 		end,
 		info = function (self, remote)
-			return xpackage(xcmd.USER_SESSION_INFO, self.master.id, 0)
+			return xpackage(xcmd.USER_SESSION_INFO, self.master_id, 0)
 				:write_object(self, "4ss4b1",
 					"max_players",
 					"gamename",
@@ -2157,7 +2158,7 @@ do
 				elseif self.score_updated[id] then
 					--
 				else
-					local client = self.clients[id] or remote.server.clients[id]
+					local client = self.clients[id] or self.server.clients[id]
 					if not client then
 						client = {}
 						if not register:get(client, id) then
@@ -2262,7 +2263,7 @@ do
 			if not self:check_session(remote) then
 				return false
 			end
-			if remote.session.master ~= remote then
+			if remote.session.master_id ~= remote.id then
 				remote.log("debug", "remote is not session master")
 				return false
 			end
@@ -2546,7 +2547,7 @@ do
 			for _, session in pairs(remote.server.sessions) do
 				if not session.locked then
 					response
-						:write_dword(session.master.id)
+						:write_dword(session.master_id)
 						:write_object(session, "4ss4b1",
 							"max_players",
 							"gamename",
@@ -2867,9 +2868,10 @@ do
 				elseif session.closed then
 					state = "closed"
 				end
-				self:table_row(tag, master_id, session.real_name, session.real_pass, state, session.master.nickname)
-				for _, client in pairs(session.clients) do
-					if client ~= session.master then
+				local master = session.clients[master_id]
+				self:table_row(tag, master_id, session.real_name, session.real_pass, state, master and master.nickname or "[master is out]")
+				for client_id, client in pairs(session.clients) do
+					if client_id ~= master_id then
 						self:table_row("", "", "", "", "", client.nickname)
 					end
 				end

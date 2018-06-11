@@ -229,9 +229,10 @@ xadmin:command("sessions", "", "list sessions", 0, function (self)
 			elseif session.closed then
 				state = "closed"
 			end
-			self:table_row(tag, master_id, session.real_name, session.real_pass, state, session.master.nickname)
-			for _, client in pairs(session.clients) do
-				if client ~= session.master then
+			local master = session.clients[master_id]
+			self:table_row(tag, master_id, session.real_name, session.real_pass, state, master and master.nickname or "[master is out]")
+			for client_id, client in pairs(session.clients) do
+				if client_id ~= master_id then
 					self:table_row("", "", "", "", "", client.nickname)
 				end
 			end

@@ -76,7 +76,7 @@ local server_core = xclass
 		if not self:check_session(remote) then
 			return false
 		end
-		if remote.session.master ~= remote then
+		if remote.session.master_id ~= remote.id then
 			remote.log("debug", "remote is not session master")
 			return false
 		end
@@ -394,7 +394,7 @@ local auth_core = xclass
 		for _, session in pairs(remote.server.sessions) do
 			if not session.locked then
 				response
-					:write_dword(session.master.id)
+					:write_dword(session.master_id)
 					:write_object(session, "4ss4b1",
 						"max_players",
 						"gamename",

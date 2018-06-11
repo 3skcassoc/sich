@@ -37,7 +37,7 @@ return {
 				"1080",
 			},
 			["local"] = {
-				-- [[[lhost:]lport:]rhost:]rport
+				-- [ [ [lhost:]lport:]rhost:]rport
 				"31523",
 			},
 		},
