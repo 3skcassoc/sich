@@ -81,7 +81,7 @@ do
 		return table.concat(do_serialize(value, {}, 0))
 	end
 	local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
-	path = path:gsub('%%', '%%%%') .. "/%s.store"
+	path = path:gsub("%%", "%%%%") .. "/%s.store"
 	log("debug", "path: %s", path)
 	xstore =
 	{
@@ -568,9 +568,8 @@ do
 			while i > 0 do
 				if self[i].key == key then
 					table.remove(self, i)
-				else
-					i = i - 1
 				end
+				i = i - 1
 			end
 		end,
 		dump = function (self, flog)
@@ -621,11 +620,11 @@ do
 			return self
 		end,
 		get_buffer = function (self)
-			if type(self.buffer) == "table" then
-				return table.concat(self.buffer)
-			else
-				return self.buffer
+			local buffer = self.buffer
+			if type(buffer) == "table" then
+				buffer = table.concat(buffer)
 			end
+			return buffer
 		end,
 		remain = function (self)
 			return math.max(0, #self.buffer - self.position + 1)
@@ -740,7 +739,7 @@ do
 			end
 			local key, value, count = self:read("zz4")
 			if not key then
-				return
+				return nil
 			end
 			local parser = xparser(key, value)
 			for _ = 1, count do
@@ -927,7 +926,7 @@ do
 		end,
 		write_objects = function (self, objects, format, ...)
 			local count = 0
-			for _, object in pairs(objects) do
+			for _ in pairs(objects) do
 				count = count + 1
 			end
 			self:write_dword(count)
@@ -1408,7 +1407,7 @@ do
 				return true, "unknown uid"
 			end
 			if not link:eck(pack.seq) then
-				return true, "bad ack"
+				return true, "bad eck"
 			end
 			link:dispatch_queue(true)
 			return true
@@ -1572,7 +1571,7 @@ do
 					if name then
 						dest = self.longs[name] or {}
 						self.longs[name] = dest
-						if eq == "=" and value ~= "" then
+						if eq == "=" then
 							table.insert(dest, value:match('^"(.*)"$') or value)
 							dest = nil
 						end

@@ -23,6 +23,7 @@ xsession = xclass
 		self.locked = false
 		self.closed = false
 		self.server = remote.server
+		self.session_id = remote.server.next_session_id
 		self.master_id = remote.id
 		self.max_players = request.max_players
 		self.password = request.password
@@ -68,7 +69,7 @@ xsession = xclass
 	end,
 	
 	message = function (self, remote, request)
-		xpackage(xcmd.USER_SESSION_MSG, request.id_from, request.id_to)
+		return xpackage(xcmd.USER_SESSION_MSG, request.id_from, request.id_to)
 			:write("s", request.message)
 			:session_dispatch(remote)
 	end,
@@ -157,7 +158,7 @@ xsession = xclass
 			parser:add("gamename", self.gamename)
 			parser:add("mapname", self.mapname)
 			parser:add("master", new_master.id)
-			parser:add("session", 0)
+			parser:add("session", self.session_id)
 			parser:add("clients", 1 + #new_clients)
 			local clientlist = parser:add("clientlist", "\0")
 			clientlist:add("*", new_master.id)
@@ -194,10 +195,28 @@ xsession = xclass
 			client:set_state("played", true)
 		end
 		
-		return xpackage(xcmd.USER_SESSION_LOCK, remote.id, 0)
-			:write_objects(self.clients, "41",
-				"id",
-				"states")
+		local count = 0
+		for _ in pairs(self.clients) do
+			count = count + 1
+		end
+		if self.server.vdata >= 0x00020203 then
+			count = count + 1
+		end
+		local response = xpackage(xcmd.USER_SESSION_LOCK, remote.id, 0)
+			:write_dword(count)
+		for _, client in pairs(self.clients) do
+			response
+				:write_object(client, "41",
+					"id",
+					"states")
+		end
+		if self.server.vdata >= 0x00020203 then
+			response
+				:write("44",
+					0,
+					self.session_id)
+		end
+		return response
 			:broadcast(remote)
 	end,
 	

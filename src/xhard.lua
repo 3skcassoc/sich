@@ -182,7 +182,7 @@ xhard = xclass
 			return true, "unknown uid"
 		end
 		if not link:eck(pack.seq) then
-			return true, "bad ack"
+			return true, "bad eck"
 		end
 		link:dispatch_queue(true)
 		return true

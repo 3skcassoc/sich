@@ -71,11 +71,51 @@ names.command = names
 	[0x01B7] = "SERVER_SESSION_CLSCORE",
 	[0x01B8] = "USER_SESSION_CLSCORE",
 	[0x01B9] = "SERVER_FORGOT_PSW",
+	[0x01BA] = "SERVER_SESSION_WRONG_CLOSE",
 	[0x01BB] = "SERVER_SESSION_PARSER",
 	[0x01BC] = "USER_SESSION_PARSER",
 	[0x01BD] = "USER_SESSION_RECREATE",
 	[0x01BE] = "USER_SESSION_REJOIN",
-	[0x01C0] = "0x01C0",
+	[0x01BF] = "SERVER_PING_TEST", 
+	[0x01C0] = "USER_PING_TEST", 
+	[0x01C1] = "SERVER_SESSION_REJOIN",
+	[0x01C2] = "SERVER_SELECT_FRIENDS",
+	[0x01C3] = "USER_SELECT_FRIENDS",
+	[0x01C4] = "SERVER_UPDATE_FRIENDS",
+	[0x01C5] = "SERVER_DELETE_FRIENDS",
+	[0x01C6] = "SERVER_SELECT_CHATS",
+	[0x01C7] = "USER_SELECT_CHATS",
+	[0x01C8] = "SERVER_INSERT_CHATS",
+	[0x01C9] = "SERVER_UPDATE_CHATS",
+	[0x01CA] = "SERVER_DELETE_CHATS",
+	[0x01CB] = "SERVER_SELECT_CLANS",
+	[0x01CC] = "USER_SELECT_CLANS",
+	[0x01CD] = "SERVER_INSERT_CLANS",
+	[0x01CE] = "SERVER_UPDATE_CLANS",
+	[0x01CF] = "SERVER_DELETE_CLANS",
+	[0x01D0] = "SERVER_SELECT_MEMBERS",
+	[0x01D1] = "USER_SELECT_MEMBERS",
+	[0x01D2] = "SERVER_INSERT_MEMBERS",
+	[0x01D3] = "SERVER_DELETE_MEMBERS",
+	[0x01D4] = "SERVER_SELECT_ADMINS",
+	[0x01D5] = "USER_SELECT_ADMINS",
+	[0x01D6] = "SERVER_UPDATE_ADMINS",
+	[0x01D7] = "SERVER_DELETE_ADMINS",
+	[0x01D8] = "SERVER_BANNING_ADMINS",
+	[0x01D9] = "SERVER_RESERV0_ADMINS",
+	[0x01DA] = "SERVER_RESERV1_ADMINS",
+	[0x01DB] = "SERVER_RESERV2_ADMINS",
+	[0x01DC] = "SERVER_SELECT_STATS",
+	[0x01DD] = "USER_SELECT_STATS",
+	[0x01DE] = "SERVER_UPDATE_STATS",
+	[0x01DF] = "SERVER_DELETE_STATS",
+	[0x01E0] = "SERVER_GET_SESSIONS",
+	[0x01E1] = "USER_GET_SESSIONS",
+	[0x01E2] = "SERVER_PING_LOCK",
+	[0x01E3] = "SERVER_PING_UNLOCK",
+	[0x01E4] = "SERVER_CHECKSUM",
+	[0x01E5] = "USER_CHECKSUM",
+	[0x01E6] = "USER_CHECKSUM_FAILED",
 	
 	[0x0001] = "0x0001",
 	[0x0002] = "0x0002",
@@ -168,10 +208,21 @@ names.season = names
 	[-1] = "Random", [0] = "Summer", [2] = "Winter", [3] = "Desert",
 }
 
-names.terraintype = names
+names.terraintype =
 {
-	[0] = "Land",               [1] = "Mediterranean",    [2] = "Peninsulas", [3] = "Islands",
-	[4] = "Several Continents", [5] = "Single Continent", [6] = "Random",
+	names
+	{
+		vdata = 0x00000000,
+		[0] = "Land",               [1] = "Mediterranean",    [2] = "Peninsulas", [3] = "Islands",
+		[4] = "Several Continents", [5] = "Single Continent", [6] = "Random",
+	},
+	names
+	{
+		vdata = 0x00020105,
+		[0] = "Land",               [1] = "Mediterranean",    [2] = "Peninsulas", [3] = "Islands",
+		[4] = "Several Continents", [5] = "Single Continent", [6] = "Coastal",    [7] = "Lakes",
+		[8] = "Rivers",             [9] = "Random",
+	},
 }
 
 names.relieftype = names
@@ -196,11 +247,25 @@ names.mapsize = names
 	[0] = "Normal", [1] = "Large 2x", [2] = "Huge 4x", [3] = "Tiny",
 }
 
-names.startingunits = names
+names.startingunits =
 {
-	[0] = "Default",          [1] = "Army",              [2] = "Big Army", [3] = "Huge Army",
-	[4] = "Army of Peasants", [5] = "Different Nations", [6] = "Towers",   [7] = "Cannons",
-	[8] = "Cannons and Howitzers",                       [9] = "18th Century Barracks",
+	names
+	{
+		vdata = 0x00000000,
+		[0] = "Default",               [1] = "Army",                   [2] = "Big Army",
+		[3] = "Huge Army",             [4] = "Army of Peasants",       [5] = "Different Nations",
+		[6] = "Towers",                [7] = "Cannons",                [8] = "Cannons and Howitzers",
+		[9] = "18th Century Barracks",
+	},
+	names
+	{
+		vdata = 0x00020105,
+		[0] = "Default",               [1] = "Army",                   [2] = "Big Army",
+		[3] = "Huge Army",             [4] = "Army of Peasants",       [5] = "Different Nations",
+		[6] = "Towers",                [7] = "Cannons",                [8] = "Cannons and Howitzers",
+		[9] = "18th Century Barracks", [10] = "17th Century Barracks", [11] = "Village",
+		[12] = "Log Cabins",           [13] = "Union",
+	},
 }
 
 names.balloon = names
@@ -231,9 +296,19 @@ names.capture = names
 	[2] = "No Capturing Peasants or Centres", [3] = "Artillery Only",
 }
 
-names.marketdip = names
+names.marketdip =
 {
-	[0] = "Default", [1] = "Without dip. center", [2] = "Without market", [3] = "Without both",
+	names
+	{
+		vdata = 0x00000000,
+		[0] = "Default", [1] = "Without dip. center", [2] = "Without market", [3] = "Without both",
+	},
+	names
+	{
+		vdata = 0x00020105,
+		[0] = "Default", [1] = "Without dip. center", [2] = "Without market", [3] = "Without both",
+		[4] = "Expensive Mercenaries",
+	},
 }
 
 names.teams = names
@@ -290,7 +365,7 @@ local cp1251 =
 	[140] = "\208\138",     [141] = "\208\140",     [142] = "\208\139",     [143] = "\208\143",
 	[144] = "\209\146",     [145] = "\226\128\152", [146] = "\226\128\153", [147] = "\226\128\156",
 	[148] = "\226\128\157", [149] = "\226\128\162", [150] = "\226\128\147", [151] = "\226\128\148",
-	[152] = "\63",          [153] = "\226\132\162", [154] = "\209\153",     [155] = "\226\128\186",
+	[152] = nil,            [153] = "\226\132\162", [154] = "\209\153",     [155] = "\226\128\186",
 	[156] = "\209\154",     [157] = "\209\156",     [158] = "\209\155",     [159] = "\209\159",
 	[160] = "\78\66\83\80", [161] = "\208\142",     [162] = "\209\158",     [163] = "\208\136",
 	[164] = "\194\164",     [165] = "\210\144",     [166] = "\194\166",     [167] = "\194\167",
@@ -333,7 +408,11 @@ local function convert_version(str)
 	return version
 end
 
-local data_version = convert_version("2.1.0")
+local function strip_color(nickname)
+	return nickname:gsub("%%color%([0-9A-Fa-f]+%)%%", "")
+end
+
+local data_version = convert_version("2.2.3")
 
 local reader = setmetatable(
 {
@@ -573,10 +652,21 @@ local reader = setmetatable(
 			local istr = tonumber(str)
 			local function tadd(title, value)
 				parser[title] = value
-				if not names[title] then
+				local value_names = names[title]
+				if not value_names then
 					title = ("%s: %d"):format(title, value)
 				else
-					title = ("%s: %d (%s)"):format(title, value, names[title][value])
+					local name = ''
+					if getmetatable(value_names) == names then
+						name = value_names[value]
+					else
+						for _, ns in ipairs(value_names) do
+							if data_version >= ns.vdata then
+								name = ns[value]
+							end
+						end
+					end
+					title = ("%s: %d (%s)"):format(title, value, name)
 				end
 				tree:add(self.range(pos, #str), title)
 			end
@@ -728,9 +818,9 @@ local reader = setmetatable(
 			return
 		end
 		t_clients:add(self.range(position, 4), ("Count: %d"):format(count))
-		for i = 1, count do
+		for _ = 1, count do
 			local position = self.position
-			local t_client = t_clients:add(self.range(self.position, 1), "client")
+			local t_client = t_clients:add(self.range(position, 1), "client")
 			if not self:object(t_client, format, ...) then
 				return
 			end
@@ -744,24 +834,7 @@ local reader = setmetatable(
 		return true
 	end,
 	
-	authenticate = function (self, tree)
-		local error_code = self:byte()
-		if not (error_code and error_code == 0) then
-			return
-		end
-		
-		if not self:object(tree, "ss444ts",
-			"nickname",
-			"country",
-			"score",
-			"games_played",
-			"games_win",
-			"last_game",
-			"info")
-		then
-			return
-		end
-		
+	server_clients = function (self, tree)
 		local count = 0
 		local position = self.position
 		local t_clients = tree:add(self.range(position, 1), "Clients")
@@ -785,7 +858,7 @@ local reader = setmetatable(
 			then
 				return
 			end
-			names.client[id] = self.result.nickname
+			names.client[id] = strip_color(self.result.nickname)
 			if data_version >= 0x00020100 then
 				if not self:object(t_client, "444td",
 					"score",
@@ -798,11 +871,14 @@ local reader = setmetatable(
 				end
 			end
 			t_client:set_len(self.position - position)
-			t_client:append_text(self.result.nickname)
+			t_client:append_text(names.client[id])
 		end
 		t_clients:set_len(self.position - position)
 		t_clients:append_text((" (%d)"):format(count))
-		
+		return true
+	end,
+	
+	server_sessions = function (self, tree)
 		local count = 0
 		local position = self.position
 		local t_sessions = tree:add(self.range(position, 1), "Sessions")
@@ -840,6 +916,31 @@ local reader = setmetatable(
 		t_sessions:set_len(self.position - position)
 		t_sessions:append_text((" (%d)"):format(count))
 		return true
+	end,
+	
+	authenticate = function (self, tree)
+		local error_code = self:byte()
+		if not (error_code and error_code == 0) then
+			return
+		end
+		
+		if not self:object(tree, "ss444ts",
+			"nickname",
+			"country",
+			"score",
+			"games_played",
+			"games_win",
+			"last_game",
+			"info")
+		then
+			return
+		end
+		
+		if not self:server_clients(tree) then
+			return
+		end
+		
+		return self:server_sessions(tree)
 	end,
 	
 	[cmd.PING] = function (self, tree)
@@ -994,9 +1095,36 @@ local reader = setmetatable(
 	end,
 	
 	[cmd.USER_SESSION_LOCK] = function (self, tree)
-		return self:clients(tree, "ie",
-			"id",
-			"states")
+		local position = self.position
+		local t_clients = tree:add(self.range(position, 1), "Clients")
+		local count = self:dword()
+		if count == nil then
+			return
+		end
+		t_clients:add(self.range(position, 4), ("Count: %d"):format(count))
+		local real_count = 0
+		for _ = 1, count do
+			local position = self.position
+			local id = self:dword()
+			if id == nil then
+				return
+			elseif id == 0 then
+				if not self:object(tree, "4", "session_id") then
+					return
+				end
+			else
+				local t_client = t_clients:add(self.range(position, 1), ("[%d] %s"):format(id, names.client[id]))
+				t_client:add(self.range(position, self.position - position), ("id: %d (%s)"):format(id, names.client[id]))
+				if not self:object(t_client, "e", "states") then
+					return
+				end
+				t_client:set_len(self.position - position)
+				real_count = real_count + 1
+			end
+		end
+		t_clients:set_len(self.position - position)
+		t_clients:append_text((" (%d)"):format(real_count))
+		return true
 	end,
 	
 	[cmd.SERVER_SESSION_INFO] = function (self, tree)
@@ -1028,7 +1156,7 @@ local reader = setmetatable(
 		then
 			return
 		end
-		names.client[self.result.id_from] = self.result.nickname
+		names.client[self.result.id_from] = strip_color(self.result.nickname)
 		if data_version >= 0x00020100 then
 			if not self:object(tree, "444td",
 				"score",
@@ -1128,7 +1256,7 @@ local reader = setmetatable(
 			local mark = self:byte()
 			if mark == nil then
 				return nil
-			elseif mark ~= 1 then
+			elseif mark == 0 then
 				t_clients:add(self.range(position, 1), "[End]")
 				break
 			end
@@ -1144,8 +1272,18 @@ local reader = setmetatable(
 			then
 				return
 			end
+			local nickname_strip = strip_color(self.result.nickname)
+			if mark >= 2 then
+				if not self:object(t_client, "i",
+					"id")
+				then
+					return
+				end
+				t_client:append_text(("[%d] "):format(self.result.id))
+				names.client[self.result.id] = nickname_strip
+			end
 			t_client:set_len(self.position - position)
-			t_client:append_text(self.result.nickname)
+			t_client:append_text(nickname_strip)
 		end
 		t_clients:set_len(self.position - position)
 		t_clients:append_text((" (%d)"):format(count))
@@ -1221,6 +1359,19 @@ local reader = setmetatable(
 		return true
 	end,
 	
+	[cmd.SERVER_GET_SESSIONS] = function (self, tree)
+		return true
+	end,
+	
+	[cmd.USER_GET_SESSIONS] = function (self, tree)
+		return self:server_sessions(tree)
+	end,
+	
+	[cmd.SERVER_CHECKSUM] = function (self, tree)
+		return self:object(tree, "w",
+			"checksum")
+	end,
+	
 	[cmd.LAN_PARSER] = function (self, tree)
 		return self:object(tree, "jp",
 			"parser_id",
@@ -1240,7 +1391,7 @@ local reader = setmetatable(
 		then
 			return
 		end
-		names.client[self.result.id] = self.result.nickname
+		names.client[self.result.id] = strip_color(self.result.nickname)
 		return true
 	end,
 	
@@ -1338,7 +1489,7 @@ Cossacks3.dissector = function (range, pinfo, root)
 		local id_to = r_id_to:le_uint()
 		
 		pinfo.cols.info = ("%s[%s] %d → %d "):format(pinfo.cols.info, command_name, id_from, id_to)
-		local tree = root:add(Cossacks3, range(0, pdu_length), ("Cossacks 3 [%s] From: %s, To: %s, Len: %d bytes")
+		local tree = root:add(Cossacks3, range(0, pdu_length), ("Cossacks 3 [%s] From: %s, To: %s, Length: %d bytes")
 			:format(command_name, names.client:raw(id_from) or id_from, names.client:raw(id_to) or id_to, pdu_length))
 		tree:add(r_length, ("Payload length: %d bytes"):format(length))
 		tree:add(Cossacks3.fields.code, r_command, command)

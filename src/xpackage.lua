@@ -17,19 +17,6 @@ xpackage = xclass
 		return self
 	end,
 	
-	receive = function (class, socket)
-		local head = socket:receive(4 + 2 + 4 + 4)
-		if not head then
-			return nil
-		end
-		local payload_length, code, id_from, id_to = xpack(head):read("4244")
-		local payload = socket:receive(payload_length)
-		if not payload then
-			return nil
-		end
-		return class(code, id_from, id_to, payload)
-	end,
-	
 	get = function (self)
 		local payload = self:get_buffer()
 		return xpack()
@@ -62,8 +49,8 @@ xpackage = xclass
 	
 	dump_head = function (self, flog)
 		flog = flog or log
-		return flog("debug", "%04X %s  id_from=%d id_to=%d",
-			self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
+		return flog("debug", "%s  from=%d to=%d",
+			xcmd.format(self.code), self.id_from, self.id_to)
 	end,
 	
 	dump_payload = function (self, flog)

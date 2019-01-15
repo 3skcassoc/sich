@@ -16,11 +16,8 @@ local custom_core = xclass
 {
 	__parent = xclients,
 	
-	__create = function (self)
-		self = xclients.__create(self)
-		self.sessions = {}
-		return self
-	end,
+	vcore = 0x00000000,
+	vdata = 0x00000000,
 	
 	connected = function (self, remote)
 		remote.server = self
@@ -31,13 +28,13 @@ local custom_core = xclass
 	end,
 	
 	process = function (self, remote, packet)
-		local request, err = packet:parse(remote.vcore, remote.vdata)
+		local request = packet:parse(self.vcore, self.vdata)
 		if not request then
-			return log("error", "packet parse: %s", err)
+			return
 		end
 		local code = request.code
 		if not self[code] then
-			return log("warn", "request is not allowed or not implemented: [0x04X] %s", code, xcmd[code] or "UNKNOWN")
+			return log("warn", "request is not allowed or not implemented: %s", xcmd.format(code))
 		end
 		return self[code](self, remote, request)
 	end,
@@ -47,8 +44,18 @@ local server_core = xclass
 {
 	__parent = custom_core,
 	
+	__create = function (self, vcore, vdata)
+		self = custom_core.__create(self)
+		self.vcore = vcore
+		self.vdata = vdata
+		self.sessions = {}
+		self.next_session_id = 1
+		return self
+	end,
+	
 	connected = function (self, remote)
 		self.clients[remote.id] = remote
+		remote.log = xlog("xclient", remote.nickname)
 		remote:set_state("online", true)
 		return custom_core.connected(self, remote)
 	end,
@@ -97,12 +104,55 @@ local server_core = xclass
 		return remote.session[action](remote.session, remote, request)
 	end,
 	
+	get_server_clients = function (self, response)
+		for _, client in pairs(self.clients) do
+			response
+				:write_object(client, "41sss",
+					"id",
+					"states",
+					"nickname",
+					"country",
+					"info")
+			if self.vdata >= 0x00020100 then
+				response
+					:write_object(client, "444td",
+						"score",
+						"games_played",
+						"games_win",
+						"last_game",
+						"pingtime")
+			end
+		end
+		response
+			:write_dword(0)
+	end,
+	
+	get_server_sessions = function (self, response)
+		for _, session in pairs(self.sessions) do
+			if not session.locked then
+				response
+					:write_object(session, "44ss4b1",
+						"master_id",
+						"max_players",
+						"gamename",
+						"mapname",
+						"money",
+						"fog_of_war",
+						"battlefield")
+					:write_objects(session.clients, "4",
+						"id")
+			end
+		end
+		response
+			:write_dword(0)
+	end,
+	
 	[xcmd.SERVER_CLIENTINFO] = function (self, remote, request)
 		if not self:check_client(request.id) then
 			return
 		end
 		local client = self.clients[request.id]
-		local response = xpackage(xcmd.USER_CLIENTINFO, 0, 0)
+		local response = xpackage(xcmd.USER_CLIENTINFO, client.id, remote.id)
 			:write_object(client, "41ss444ts",
 				"id",
 				"states",
@@ -113,7 +163,7 @@ local server_core = xclass
 				"games_win",
 				"last_game",
 				"info")
-		if remote.vdata >= 0x00020100 then
+		if self.vdata >= 0x00020100 then
 			response
 				:write_object(client, "d",
 					"pingtime")
@@ -134,6 +184,7 @@ local server_core = xclass
 	
 	[xcmd.SERVER_SESSION_CREATE] = function (self, remote, request)
 		self.sessions[remote.id] = xsession(remote, request)
+		self.next_session_id = self.next_session_id + 1
 	end,
 	
 	[xcmd.SERVER_SESSION_JOIN] = function (self, remote, request)
@@ -164,10 +215,10 @@ local server_core = xclass
 	end,
 	
 	[xcmd.SERVER_VERSION_INFO] = function (self, remote, request)
-		return xpackage(xcmd.USER_VERSION_INFO, 0, 0)
+		return xpackage(xcmd.USER_VERSION_INFO, 0, remote.id)
 			:write("vvq",
-				remote.vcore,
-				remote.vdata,
+				self.vcore,
+				self.vdata,
 				null_parser)
 			:transmit(remote)
 	end,
@@ -179,9 +230,11 @@ local server_core = xclass
 	[xcmd.SERVER_GET_TOP_USERS] = function (self, remote, request)
 		remote.log("debug", "get top users")
 		local count = request.count
+		local ids = {}
 		local accounts = {}
-		for _, account in register:pairs() do
+		for id, account in register:pairs() do
 			if not account.banned then
+				ids[account] = id
 				table.insert(accounts, account)
 			end
 		end
@@ -190,14 +243,18 @@ local server_core = xclass
 			b = b.score * 10000 + b.games_win
 			return a > b
 		end)
-		local response = xpackage(xcmd.USER_GET_TOP_USERS, 0, 0)
+		local mark = 1
+		if self.vdata >= 0x00010306 then
+			mark = 2
+		end
+		local response = xpackage(xcmd.USER_GET_TOP_USERS, remote.id, remote.id)
 		for _, account in ipairs(accounts) do
 			if count == 0 then
 				break
 			end
 			count = count - 1
 			response
-				:write_byte(1)
+				:write_byte(mark)
 				:write_object(account, "ss444t",
 					"nickname",
 					"country",
@@ -205,6 +262,10 @@ local server_core = xclass
 					"games_played",
 					"games_win",
 					"last_game")
+			if mark >= 2 then
+				response
+					:write_dword(ids[account])
+			end
 		end
 		return response
 			:write_byte(0)
@@ -224,7 +285,7 @@ local server_core = xclass
 				"country",
 				"info",
 				"states")
-		if remote.vdata >= 0x00020100 then
+		if self.vdata >= 0x00020100 then
 			response
 				:write_object(remote, "444td",
 					"score",
@@ -257,6 +318,22 @@ local server_core = xclass
 			:session_dispatch(remote)
 	end,
 	
+	[xcmd.SERVER_GET_SESSIONS] = function (self, remote, request)
+		local response = xpackage(xcmd.USER_GET_SESSIONS, remote.id, remote.id)
+		self:get_server_sessions(response)
+		return response
+			:transmit(remote)
+	end,
+	
+	[xcmd.SERVER_PING_LOCK] = function (self, remote, request)
+	end,
+	
+	[xcmd.SERVER_PING_UNLOCK] = function (self, remote, request)
+	end,
+	
+	[xcmd.SERVER_CHECKSUM] = function (self, remote, request)
+	end,
+	
 	[xcmd.LAN_PARSER] = function (self, remote, request)
 		if request.parser_id == xgc.LAN_GAME_SESSION_RESULTS
 		or request.parser_id == xgc.LAN_GAME_SURRENDER_CONFIRM then
@@ -276,12 +353,12 @@ end
 servers = {}
 
 local function get_server(vcore, vdata)
-	vcore, vdata = version_str(vcore, vdata)
-	local tag = vcore .. "/" .. vdata
+	local vcore_str, vdata_str = version_str(vcore, vdata)
+	local tag = vcore_str .. "/" .. vdata_str
 	local server = servers[tag]
 	if not server then
 		log("debug", "creating new server: %s", tag)
-		server = server_core()
+		server = server_core(vcore, vdata)
 		servers[tag] = server
 	end
 	return server
@@ -346,19 +423,16 @@ local auth_core = xclass
 		remote.log("debug", "auth: email=%s, vcore=%s, vdata=%s", request.email, version_str(request.vcore, request.vdata))
 		
 		local error_code = self:try_user_auth(remote, request)
-		local response = xpackage(response_code, remote.id or 0, 0)
+		local response = xpackage(response_code, remote.id or 0, remote.id or 0)
 			:write_byte(error_code)
 		if error_code ~= 0 then
 			return response
 				:transmit(remote)
 		end
 		
-		remote.log = xlog("xclient", remote.nickname)
-		remote.vcore = request.vcore
-		remote.vdata = request.vdata
-		
-		remote.server:disconnected(remote)
-		get_server(request.vcore, request.vdata):connected(remote)
+		self:disconnected(remote)
+		self = get_server(request.vcore, request.vdata)
+		self:connected(remote)
 		
 		response
 			:write_object(remote, "ss444ts",
@@ -370,44 +444,9 @@ local auth_core = xclass
 				"last_game",
 				"info")
 		
-		for _, client in pairs(remote.server.clients) do
-			response
-				:write_object(client, "41sss",
-					"id",
-					"states",
-					"nickname",
-					"country",
-					"info")
-			if remote.vdata >= 0x00020100 then
-				response
-					:write_object(client, "444td",
-						"score",
-						"games_played",
-						"games_win",
-						"last_game",
-						"pingtime")
-			end
-		end
+		self:get_server_clients(response)
+		self:get_server_sessions(response)
 		response
-			:write_dword(0)
-		
-		for _, session in pairs(remote.server.sessions) do
-			if not session.locked then
-				response
-					:write_dword(session.master_id)
-					:write_object(session, "4ss4b1",
-						"max_players",
-						"gamename",
-						"mapname",
-						"money",
-						"fog_of_war",
-						"battlefield")
-					:write_objects(session.clients, "4",
-						"id")
-			end
-		end
-		response
-			:write_dword(0)
 			:transmit(remote)
 		
 		response = xpackage(xcmd.USER_CONNECTED, remote.id, 0)
@@ -416,7 +455,7 @@ local auth_core = xclass
 				"country",
 				"info",
 				"states")
-		if remote.vdata >= 0x00020100 then
+		if self.vdata >= 0x00020100 then
 			response
 				:write_object(remote, "444td",
 					"score",

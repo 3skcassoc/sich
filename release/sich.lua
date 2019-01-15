@@ -3,7 +3,7 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.2.3"
+VERSION = "Sich v0.2.5"
 
 -- // xclass // --
 do
@@ -88,7 +88,7 @@ do
 		return table.concat(do_serialize(value, {}, 0))
 	end
 	local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
-	path = path:gsub('%%', '%%%%') .. "/%s.store"
+	path = path:gsub("%%", "%%%%") .. "/%s.store"
 	log("debug", "path: %s", path)
 	xstore =
 	{
@@ -214,7 +214,7 @@ do
 	local cmd =
 	{
 		[0x0190] = "SHELL_CONSOLE",                -- 
-		[0x0191] = "PING",                         -- 
+		[0x0191] = "PING",                         -- lePingInfo
 		[0x0192] = "SERVER_CLIENTINFO",            -- LanPublicServerUpdateClientInfo
 		[0x0193] = "USER_CLIENTINFO",              -- leShellClientInfo
 		[0x0194] = "SERVER_SESSION_MSG",           -- LanPublicServerSendSessionMessage
@@ -255,11 +255,51 @@ do
 		[0x01B7] = "SERVER_SESSION_CLSCORE",       -- LanSrvSetClientScore
 		[0x01B8] = "USER_SESSION_CLSCORE",         -- 
 		[0x01B9] = "SERVER_FORGOT_PSW",            -- LanPublicServerForgotPassword
+		[0x01BA] = "SERVER_SESSION_WRONG_CLOSE",   -- 
 		[0x01BB] = "SERVER_SESSION_PARSER",        -- LanPublicServerSendSessionParser
 		[0x01BC] = "USER_SESSION_PARSER",          -- leSessionParser
 		[0x01BD] = "USER_SESSION_RECREATE",        -- leSessionRecreate
 		[0x01BE] = "USER_SESSION_REJOIN",          -- leSessionRejoin
-		[0x01C0] = "0x01C0",                       --
+		[0x01BF] = "SERVER_PING_TEST",             -- 
+		[0x01C0] = "USER_PING_TEST",               -- 
+		[0x01C1] = "SERVER_SESSION_REJOIN",        -- 
+		[0x01C2] = "SERVER_SELECT_FRIENDS",        -- 
+		[0x01C3] = "USER_SELECT_FRIENDS",          -- leSelectFriends
+		[0x01C4] = "SERVER_UPDATE_FRIENDS",        -- 
+		[0x01C5] = "SERVER_DELETE_FRIENDS",        -- 
+		[0x01C6] = "SERVER_SELECT_CHATS",          -- 
+		[0x01C7] = "USER_SELECT_CHATS",            -- leSelectChats
+		[0x01C8] = "SERVER_INSERT_CHATS",          -- 
+		[0x01C9] = "SERVER_UPDATE_CHATS",          -- 
+		[0x01CA] = "SERVER_DELETE_CHATS",          -- 
+		[0x01CB] = "SERVER_SELECT_CLANS",          -- 
+		[0x01CC] = "USER_SELECT_CLANS",            -- leSelectClans
+		[0x01CD] = "SERVER_INSERT_CLANS",          -- 
+		[0x01CE] = "SERVER_UPDATE_CLANS",          -- 
+		[0x01CF] = "SERVER_DELETE_CLANS",          -- 
+		[0x01D0] = "SERVER_SELECT_MEMBERS",        -- 
+		[0x01D1] = "USER_SELECT_MEMBERS",          -- leSelectMembers
+		[0x01D2] = "SERVER_INSERT_MEMBERS",        -- 
+		[0x01D3] = "SERVER_DELETE_MEMBERS",        -- 
+		[0x01D4] = "SERVER_SELECT_ADMINS",         -- 
+		[0x01D5] = "USER_SELECT_ADMINS",           -- leSelectAdmins
+		[0x01D6] = "SERVER_UPDATE_ADMINS",         -- 
+		[0x01D7] = "SERVER_DELETE_ADMINS",         -- 
+		[0x01D8] = "SERVER_BANNING_ADMINS",        -- 
+		[0x01D9] = "SERVER_RESERV0_ADMINS",        -- 
+		[0x01DA] = "SERVER_RESERV1_ADMINS",        -- 
+		[0x01DB] = "SERVER_RESERV2_ADMINS",        -- 
+		[0x01DC] = "SERVER_SELECT_STATS",          -- 
+		[0x01DD] = "USER_SELECT_STATS",            -- leSelectStats
+		[0x01DE] = "SERVER_UPDATE_STATS",          -- 
+		[0x01DF] = "SERVER_DELETE_STATS",          -- 
+		[0x01E0] = "SERVER_GET_SESSIONS",          -- 
+		[0x01E1] = "USER_GET_SESSIONS",            -- leGetSessions
+		[0x01E2] = "SERVER_PING_LOCK",             -- 
+		[0x01E3] = "SERVER_PING_UNLOCK",           -- 
+		[0x01E4] = "SERVER_CHECKSUM",              -- 
+		[0x01E5] = "USER_CHECKSUM",                -- 
+		[0x01E6] = "USER_CHECKSUM_FAILED",         -- leChecksumFailed
 		[0x0032] = "LAN_PARSER",                   -- LanSendParser
 		[0x0064] = "LAN_CLIENT_INFO",              -- leClientInfo
 		[0x00C8] = "LAN_SERVER_INFO",              -- leServerInfo
@@ -275,6 +315,9 @@ do
 		xcmd[name] = code
 	end
 	cmd = nil
+	xcmd.format = function (code)
+		return ("[0x%04X] %s"):format(code, xcmd[code] or "UNKNOWN")
+	end
 	xgc = {}
 	xgc.LAN_GENERATE = 1
 	xgc.LAN_READYSTART = 2
@@ -396,9 +439,8 @@ do
 			while i > 0 do
 				if self[i].key == key then
 					table.remove(self, i)
-				else
-					i = i - 1
 				end
+				i = i - 1
 			end
 		end,
 		dump = function (self, flog)
@@ -449,11 +491,11 @@ do
 			return self
 		end,
 		get_buffer = function (self)
-			if type(self.buffer) == "table" then
-				return table.concat(self.buffer)
-			else
-				return self.buffer
+			local buffer = self.buffer
+			if type(buffer) == "table" then
+				buffer = table.concat(buffer)
 			end
+			return buffer
 		end,
 		remain = function (self)
 			return math.max(0, #self.buffer - self.position + 1)
@@ -568,7 +610,7 @@ do
 			end
 			local key, value, count = self:read("zz4")
 			if not key then
-				return
+				return nil
 			end
 			local parser = xparser(key, value)
 			for _ = 1, count do
@@ -755,7 +797,7 @@ do
 		end,
 		write_objects = function (self, objects, format, ...)
 			local count = 0
-			for _, object in pairs(objects) do
+			for _ in pairs(objects) do
 				count = count + 1
 			end
 			self:write_dword(count)
@@ -783,18 +825,6 @@ do
 			self.id_to = assert(id_to, "no id_to")
 			return self
 		end,
-		receive = function (class, socket)
-			local head = socket:receive(4 + 2 + 4 + 4)
-			if not head then
-				return nil
-			end
-			local payload_length, code, id_from, id_to = xpack(head):read("4244")
-			local payload = socket:receive(payload_length)
-			if not payload then
-				return nil
-			end
-			return class(code, id_from, id_to, payload)
-		end,
 		get = function (self)
 			local payload = self:get_buffer()
 			return xpack()
@@ -821,8 +851,8 @@ do
 		end,
 		dump_head = function (self, flog)
 			flog = flog or log
-			return flog("debug", "%04X %s  id_from=%d id_to=%d",
-				self.code, xcmd[self.code] or "UNKNOWN", self.id_from, self.id_to)
+			return flog("debug", "%s  from=%d to=%d",
+				xcmd.format(self.code), self.id_from, self.id_to)
 		end,
 		dump_payload = function (self, flog)
 			flog = flog or log
@@ -854,20 +884,31 @@ do
 	xpacket = xclass
 	{
 		__parent = xpackage,
+		receive = function (class, socket)
+			local head = socket:receive(4 + 2 + 4 + 4)
+			if not head then
+				return nil
+			end
+			local payload_length, code, id_from, id_to = xpack(head):read("4244")
+			local payload = socket:receive(payload_length)
+			if not payload then
+				return nil
+			end
+			return class(code, id_from, id_to, payload)
+		end,
 		parse = function (self, vcore, vdata)
 			local read_proc = self[self.code]
 			if not read_proc then
-				return nil, "unknown"
+				log("warn", "%s: not implemented", xcmd.format(self.code))
+				return nil
 			end
 			self.vcore = vcore
 			self.vdata = vdata
 			self.position = 1
 			local result = read_proc(self, {})
-			if not result then
-				return nil, "failed"
-			end
-			if self:remain() > 0 then
-				return nil, "remain"
+			if (not result) or (self:remain() > 0) then
+				log("error", "%s: parse error", xcmd.format(self.code))
+				return nil
 			end
 			result.code = self.code
 			result.id_from = self.id_from
@@ -882,25 +923,7 @@ do
 			result.clients = clients
 			return result
 		end,
-		read_authenticate = function (self, result)
-			result.error_code = self:read_byte()
-			if not result.error_code then
-				return nil
-			end
-			if result.error_code ~= 0 then
-				return result
-			end
-			if not self:read_object(result, "ss444ts",
-				"nickname",
-				"country",
-				"score",
-				"games_played",
-				"games_win",
-				"last_game",
-				"info")
-			then
-				return nil
-			end
+		read_server_clients = function (self, result)
 			result.clients = {}
 			while true do
 				local id = self:read_dword()
@@ -930,6 +953,8 @@ do
 				end
 				table.insert(result.clients, client)
 			end
+		end,
+		read_server_sessions = function (self, result)
 			result.sessions = {}
 			while true do
 				local master_id = self:read_dword()
@@ -956,6 +981,30 @@ do
 				table.insert(result.sessions, session)
 			end
 			return result
+		end,
+		read_authenticate = function (self, result)
+			result.error_code = self:read_byte()
+			if not result.error_code then
+				return nil
+			end
+			if result.error_code ~= 0 then
+				return result
+			end
+			if not self:read_object(result, "ss444ts",
+				"nickname",
+				"country",
+				"score",
+				"games_played",
+				"games_win",
+				"last_game",
+				"info")
+			then
+				return nil
+			end
+			if not self:read_server_clients(result) then
+				return nil
+			end
+			return self:read_server_sessions(result)
 		end,
 		[xcmd.PING] = function (self, result)
 			if result.id_from ~= 0 then
@@ -1081,9 +1130,33 @@ do
 				"team")
 		end,
 		[xcmd.USER_SESSION_LOCK] = function (self, result)
-			return self:read_clients(result, "41",
-				"id",
-				"states")
+			local count = self:read_dword()
+			if count == nil then
+				return nil
+			end
+			local clients = {}
+			for _ = 1, count do
+				local id = self:read_dword()
+				if id == nil then
+					return nil
+				elseif id == 0 then
+					if not self:read_object(result, "4",
+						"session_id")
+					then
+						return nil
+					end
+				else
+					local client = {id = id}
+					if not self:read_object(client, "1",
+						"states")
+					then
+						return nil
+					end
+					table.insert(clients, client)
+				end
+			end
+			result.clients = clients
+			return result
 		end,
 		[xcmd.SERVER_SESSION_INFO] = function (self, result)
 			return result
@@ -1186,7 +1259,7 @@ do
 				local mark = self:read_byte()
 				if mark == nil then
 					return nil
-				elseif mark ~= 1 then
+				elseif mark == 0 then
 					break
 				end
 				local client = self:read_object({}, "ss444t",
@@ -1198,6 +1271,13 @@ do
 					"last_game")
 				if not client then
 					return nil
+				end
+				if mark >= 2 then
+					if not self:read_object(client, "4",
+						"id")
+					then
+						return nil
+					end
 				end
 				table.insert(result.clients, client)
 			end
@@ -1270,6 +1350,25 @@ do
 				"parser")
 		end,
 		[xcmd.USER_SESSION_REJOIN] = function (self, result)
+			return result
+		end,
+		[xcmd.SERVER_GET_SESSIONS] = function (self, result)
+			return result
+		end,
+		[xcmd.USER_GET_SESSIONS] = function (self, result)
+			return self:read_server_sessions(result)
+		end,
+		[xcmd.SERVER_PING_LOCK] = function (self, result)
+			return result
+		end,
+		[xcmd.SERVER_PING_UNLOCK] = function (self, result)
+			return result
+		end,
+		[xcmd.SERVER_CHECKSUM] = function (self, result)
+			return self:read_object(result, "w",
+				"checksum")
+		end,
+		[xcmd.USER_CHECKSUM] = function (self, result)
 			return result
 		end,
 		[xcmd.LAN_PARSER] = function (self, result)
@@ -1910,6 +2009,7 @@ do
 			self.locked = false
 			self.closed = false
 			self.server = remote.server
+			self.session_id = remote.server.next_session_id
 			self.master_id = remote.id
 			self.max_players = request.max_players
 			self.password = request.password
@@ -1949,7 +2049,7 @@ do
 			end
 		end,
 		message = function (self, remote, request)
-			xpackage(xcmd.USER_SESSION_MSG, request.id_from, request.id_to)
+			return xpackage(xcmd.USER_SESSION_MSG, request.id_from, request.id_to)
 				:write("s", request.message)
 				:session_dispatch(remote)
 		end,
@@ -2026,7 +2126,7 @@ do
 				parser:add("gamename", self.gamename)
 				parser:add("mapname", self.mapname)
 				parser:add("master", new_master.id)
-				parser:add("session", 0)
+				parser:add("session", self.session_id)
 				parser:add("clients", 1 + #new_clients)
 				local clientlist = parser:add("clientlist", "\0")
 				clientlist:add("*", new_master.id)
@@ -2057,10 +2157,28 @@ do
 				end
 				client:set_state("played", true)
 			end
-			return xpackage(xcmd.USER_SESSION_LOCK, remote.id, 0)
-				:write_objects(self.clients, "41",
-					"id",
-					"states")
+			local count = 0
+			for _ in pairs(self.clients) do
+				count = count + 1
+			end
+			if self.server.vdata >= 0x00020203 then
+				count = count + 1
+			end
+			local response = xpackage(xcmd.USER_SESSION_LOCK, remote.id, 0)
+				:write_dword(count)
+			for _, client in pairs(self.clients) do
+				response
+					:write_object(client, "41",
+						"id",
+						"states")
+			end
+			if self.server.vdata >= 0x00020203 then
+				response
+					:write("44",
+						0,
+						self.session_id)
+			end
+			return response
 				:broadcast(remote)
 		end,
 		info = function (self, remote)
@@ -2211,11 +2329,8 @@ do
 	local custom_core = xclass
 	{
 		__parent = xclients,
-		__create = function (self)
-			self = xclients.__create(self)
-			self.sessions = {}
-			return self
-		end,
+		vcore = 0x00000000,
+		vdata = 0x00000000,
 		connected = function (self, remote)
 			remote.server = self
 		end,
@@ -2223,13 +2338,13 @@ do
 			remote.server = nil
 		end,
 		process = function (self, remote, packet)
-			local request, err = packet:parse(remote.vcore, remote.vdata)
+			local request = packet:parse(self.vcore, self.vdata)
 			if not request then
-				return log("error", "packet parse: %s", err)
+				return
 			end
 			local code = request.code
 			if not self[code] then
-				return log("warn", "request is not allowed or not implemented: [0x04X] %s", code, xcmd[code] or "UNKNOWN")
+				return log("warn", "request is not allowed or not implemented: %s", xcmd.format(code))
 			end
 			return self[code](self, remote, request)
 		end,
@@ -2237,8 +2352,17 @@ do
 	local server_core = xclass
 	{
 		__parent = custom_core,
+		__create = function (self, vcore, vdata)
+			self = custom_core.__create(self)
+			self.vcore = vcore
+			self.vdata = vdata
+			self.sessions = {}
+			self.next_session_id = 1
+			return self
+		end,
 		connected = function (self, remote)
 			self.clients[remote.id] = remote
+			remote.log = xlog("xclient", remote.nickname)
 			remote:set_state("online", true)
 			return custom_core.connected(self, remote)
 		end,
@@ -2281,12 +2405,53 @@ do
 			end
 			return remote.session[action](remote.session, remote, request)
 		end,
+		get_server_clients = function (self, response)
+			for _, client in pairs(self.clients) do
+				response
+					:write_object(client, "41sss",
+						"id",
+						"states",
+						"nickname",
+						"country",
+						"info")
+				if self.vdata >= 0x00020100 then
+					response
+						:write_object(client, "444td",
+							"score",
+							"games_played",
+							"games_win",
+							"last_game",
+							"pingtime")
+				end
+			end
+			response
+				:write_dword(0)
+		end,
+		get_server_sessions = function (self, response)
+			for _, session in pairs(self.sessions) do
+				if not session.locked then
+					response
+						:write_object(session, "44ss4b1",
+							"master_id",
+							"max_players",
+							"gamename",
+							"mapname",
+							"money",
+							"fog_of_war",
+							"battlefield")
+						:write_objects(session.clients, "4",
+							"id")
+				end
+			end
+			response
+				:write_dword(0)
+		end,
 		[xcmd.SERVER_CLIENTINFO] = function (self, remote, request)
 			if not self:check_client(request.id) then
 				return
 			end
 			local client = self.clients[request.id]
-			local response = xpackage(xcmd.USER_CLIENTINFO, 0, 0)
+			local response = xpackage(xcmd.USER_CLIENTINFO, client.id, remote.id)
 				:write_object(client, "41ss444ts",
 					"id",
 					"states",
@@ -2297,7 +2462,7 @@ do
 					"games_win",
 					"last_game",
 					"info")
-			if remote.vdata >= 0x00020100 then
+			if self.vdata >= 0x00020100 then
 				response
 					:write_object(client, "d",
 						"pingtime")
@@ -2315,6 +2480,7 @@ do
 		end,
 		[xcmd.SERVER_SESSION_CREATE] = function (self, remote, request)
 			self.sessions[remote.id] = xsession(remote, request)
+			self.next_session_id = self.next_session_id + 1
 		end,
 		[xcmd.SERVER_SESSION_JOIN] = function (self, remote, request)
 			if not self.sessions[request.master_id] then
@@ -2338,10 +2504,10 @@ do
 			return self:session_action("client_update", remote, request)
 		end,
 		[xcmd.SERVER_VERSION_INFO] = function (self, remote, request)
-			return xpackage(xcmd.USER_VERSION_INFO, 0, 0)
+			return xpackage(xcmd.USER_VERSION_INFO, 0, remote.id)
 				:write("vvq",
-					remote.vcore,
-					remote.vdata,
+					self.vcore,
+					self.vdata,
 					null_parser)
 				:transmit(remote)
 		end,
@@ -2351,9 +2517,11 @@ do
 		[xcmd.SERVER_GET_TOP_USERS] = function (self, remote, request)
 			remote.log("debug", "get top users")
 			local count = request.count
+			local ids = {}
 			local accounts = {}
-			for _, account in register:pairs() do
+			for id, account in register:pairs() do
 				if not account.banned then
+					ids[account] = id
 					table.insert(accounts, account)
 				end
 			end
@@ -2362,14 +2530,18 @@ do
 				b = b.score * 10000 + b.games_win
 				return a > b
 			end)
-			local response = xpackage(xcmd.USER_GET_TOP_USERS, 0, 0)
+			local mark = 1
+			if self.vdata >= 0x00010306 then
+				mark = 2
+			end
+			local response = xpackage(xcmd.USER_GET_TOP_USERS, remote.id, remote.id)
 			for _, account in ipairs(accounts) do
 				if count == 0 then
 					break
 				end
 				count = count - 1
 				response
-					:write_byte(1)
+					:write_byte(mark)
 					:write_object(account, "ss444t",
 						"nickname",
 						"country",
@@ -2377,6 +2549,10 @@ do
 						"games_played",
 						"games_win",
 						"last_game")
+				if mark >= 2 then
+					response
+						:write_dword(ids[account])
+				end
 			end
 			return response
 				:write_byte(0)
@@ -2395,7 +2571,7 @@ do
 					"country",
 					"info",
 					"states")
-			if remote.vdata >= 0x00020100 then
+			if self.vdata >= 0x00020100 then
 				response
 					:write_object(remote, "444td",
 						"score",
@@ -2424,6 +2600,18 @@ do
 				:write_dword(0)
 				:session_dispatch(remote)
 		end,
+		[xcmd.SERVER_GET_SESSIONS] = function (self, remote, request)
+			local response = xpackage(xcmd.USER_GET_SESSIONS, remote.id, remote.id)
+			self:get_server_sessions(response)
+			return response
+				:transmit(remote)
+		end,
+		[xcmd.SERVER_PING_LOCK] = function (self, remote, request)
+		end,
+		[xcmd.SERVER_PING_UNLOCK] = function (self, remote, request)
+		end,
+		[xcmd.SERVER_CHECKSUM] = function (self, remote, request)
+		end,
 		[xcmd.LAN_PARSER] = function (self, remote, request)
 			if request.parser_id == xgc.LAN_GAME_SESSION_RESULTS
 			or request.parser_id == xgc.LAN_GAME_SURRENDER_CONFIRM then
@@ -2440,12 +2628,12 @@ do
 	end
 	servers = {}
 	local function get_server(vcore, vdata)
-		vcore, vdata = version_str(vcore, vdata)
-		local tag = vcore .. "/" .. vdata
+		local vcore_str, vdata_str = version_str(vcore, vdata)
+		local tag = vcore_str .. "/" .. vdata_str
 		local server = servers[tag]
 		if not server then
 			log("debug", "creating new server: %s", tag)
-			server = server_core()
+			server = server_core(vcore, vdata)
 			servers[tag] = server
 		end
 		return server
@@ -2504,17 +2692,15 @@ do
 			local response_code = (request.code == xcmd.SERVER_REGISTER) and xcmd.USER_REGISTER or xcmd.USER_AUTHENTICATE
 			remote.log("debug", "auth: email=%s, vcore=%s, vdata=%s", request.email, version_str(request.vcore, request.vdata))
 			local error_code = self:try_user_auth(remote, request)
-			local response = xpackage(response_code, remote.id or 0, 0)
+			local response = xpackage(response_code, remote.id or 0, remote.id or 0)
 				:write_byte(error_code)
 			if error_code ~= 0 then
 				return response
 					:transmit(remote)
 			end
-			remote.log = xlog("xclient", remote.nickname)
-			remote.vcore = request.vcore
-			remote.vdata = request.vdata
-			remote.server:disconnected(remote)
-			get_server(request.vcore, request.vdata):connected(remote)
+			self:disconnected(remote)
+			self = get_server(request.vcore, request.vdata)
+			self:connected(remote)
 			response
 				:write_object(remote, "ss444ts",
 					"nickname",
@@ -2524,43 +2710,9 @@ do
 					"games_win",
 					"last_game",
 					"info")
-			for _, client in pairs(remote.server.clients) do
-				response
-					:write_object(client, "41sss",
-						"id",
-						"states",
-						"nickname",
-						"country",
-						"info")
-				if remote.vdata >= 0x00020100 then
-					response
-						:write_object(client, "444td",
-							"score",
-							"games_played",
-							"games_win",
-							"last_game",
-							"pingtime")
-				end
-			end
+			self:get_server_clients(response)
+			self:get_server_sessions(response)
 			response
-				:write_dword(0)
-			for _, session in pairs(remote.server.sessions) do
-				if not session.locked then
-					response
-						:write_dword(session.master_id)
-						:write_object(session, "4ss4b1",
-							"max_players",
-							"gamename",
-							"mapname",
-							"money",
-							"fog_of_war",
-							"battlefield")
-						:write_objects(session.clients, "4",
-							"id")
-				end
-			end
-			response
-				:write_dword(0)
 				:transmit(remote)
 			response = xpackage(xcmd.USER_CONNECTED, remote.id, 0)
 				:write_object(remote, "sss1",
@@ -2568,7 +2720,7 @@ do
 					"country",
 					"info",
 					"states")
-			if remote.vdata >= 0x00020100 then
+			if self.vdata >= 0x00020100 then
 				response
 					:write_object(remote, "444td",
 						"score",
@@ -2972,7 +3124,7 @@ do
 	if not xconfig.admin then
 		log("info", "disabled")
 	else
-		local host, port = assert(xconfig.admin.host), assert(xconfig.admin.port)
+		local host, port = assert(xconfig.admin.host, "no admin.host"), assert(xconfig.admin.port, "no admin.port")
 		local server_socket = assert(xsocket.tcp())
 		assert(server_socket:bind(host, port))
 		assert(server_socket:listen(32))

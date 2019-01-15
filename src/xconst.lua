@@ -1,7 +1,7 @@
 local cmd =
 {
 	[0x0190] = "SHELL_CONSOLE",                -- 
-	[0x0191] = "PING",                         -- 
+	[0x0191] = "PING",                         -- lePingInfo
 	[0x0192] = "SERVER_CLIENTINFO",            -- LanPublicServerUpdateClientInfo
 	[0x0193] = "USER_CLIENTINFO",              -- leShellClientInfo
 	[0x0194] = "SERVER_SESSION_MSG",           -- LanPublicServerSendSessionMessage
@@ -42,12 +42,51 @@ local cmd =
 	[0x01B7] = "SERVER_SESSION_CLSCORE",       -- LanSrvSetClientScore
 	[0x01B8] = "USER_SESSION_CLSCORE",         -- 
 	[0x01B9] = "SERVER_FORGOT_PSW",            -- LanPublicServerForgotPassword
-	
+	[0x01BA] = "SERVER_SESSION_WRONG_CLOSE",   -- 
 	[0x01BB] = "SERVER_SESSION_PARSER",        -- LanPublicServerSendSessionParser
 	[0x01BC] = "USER_SESSION_PARSER",          -- leSessionParser
 	[0x01BD] = "USER_SESSION_RECREATE",        -- leSessionRecreate
 	[0x01BE] = "USER_SESSION_REJOIN",          -- leSessionRejoin
-	[0x01C0] = "0x01C0",                       --
+	[0x01BF] = "SERVER_PING_TEST",             -- 
+	[0x01C0] = "USER_PING_TEST",               -- 
+	[0x01C1] = "SERVER_SESSION_REJOIN",        -- 
+	[0x01C2] = "SERVER_SELECT_FRIENDS",        -- 
+	[0x01C3] = "USER_SELECT_FRIENDS",          -- leSelectFriends
+	[0x01C4] = "SERVER_UPDATE_FRIENDS",        -- 
+	[0x01C5] = "SERVER_DELETE_FRIENDS",        -- 
+	[0x01C6] = "SERVER_SELECT_CHATS",          -- 
+	[0x01C7] = "USER_SELECT_CHATS",            -- leSelectChats
+	[0x01C8] = "SERVER_INSERT_CHATS",          -- 
+	[0x01C9] = "SERVER_UPDATE_CHATS",          -- 
+	[0x01CA] = "SERVER_DELETE_CHATS",          -- 
+	[0x01CB] = "SERVER_SELECT_CLANS",          -- 
+	[0x01CC] = "USER_SELECT_CLANS",            -- leSelectClans
+	[0x01CD] = "SERVER_INSERT_CLANS",          -- 
+	[0x01CE] = "SERVER_UPDATE_CLANS",          -- 
+	[0x01CF] = "SERVER_DELETE_CLANS",          -- 
+	[0x01D0] = "SERVER_SELECT_MEMBERS",        -- 
+	[0x01D1] = "USER_SELECT_MEMBERS",          -- leSelectMembers
+	[0x01D2] = "SERVER_INSERT_MEMBERS",        -- 
+	[0x01D3] = "SERVER_DELETE_MEMBERS",        -- 
+	[0x01D4] = "SERVER_SELECT_ADMINS",         -- 
+	[0x01D5] = "USER_SELECT_ADMINS",           -- leSelectAdmins
+	[0x01D6] = "SERVER_UPDATE_ADMINS",         -- 
+	[0x01D7] = "SERVER_DELETE_ADMINS",         -- 
+	[0x01D8] = "SERVER_BANNING_ADMINS",        -- 
+	[0x01D9] = "SERVER_RESERV0_ADMINS",        -- 
+	[0x01DA] = "SERVER_RESERV1_ADMINS",        -- 
+	[0x01DB] = "SERVER_RESERV2_ADMINS",        -- 
+	[0x01DC] = "SERVER_SELECT_STATS",          -- 
+	[0x01DD] = "USER_SELECT_STATS",            -- leSelectStats
+	[0x01DE] = "SERVER_UPDATE_STATS",          -- 
+	[0x01DF] = "SERVER_DELETE_STATS",          -- 
+	[0x01E0] = "SERVER_GET_SESSIONS",          -- 
+	[0x01E1] = "USER_GET_SESSIONS",            -- leGetSessions
+	[0x01E2] = "SERVER_PING_LOCK",             -- 
+	[0x01E3] = "SERVER_PING_UNLOCK",           -- 
+	[0x01E4] = "SERVER_CHECKSUM",              -- 
+	[0x01E5] = "USER_CHECKSUM",                -- 
+	[0x01E6] = "USER_CHECKSUM_FAILED",         -- leChecksumFailed
 	
 	[0x0032] = "LAN_PARSER",                   -- LanSendParser
 	[0x0064] = "LAN_CLIENT_INFO",              -- leClientInfo
@@ -65,6 +104,10 @@ for code, name in pairs(cmd) do
 	xcmd[name] = code
 end
 cmd = nil
+
+xcmd.format = function (code)
+	return ("[0x%04X] %s"):format(code, xcmd[code] or "UNKNOWN")
+end
 
 xgc = {}
 

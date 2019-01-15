@@ -37,7 +37,7 @@ xcmdline = xclass
 				if name then
 					dest = self.longs[name] or {}
 					self.longs[name] = dest
-					if eq == "=" and value ~= "" then
+					if eq == "=" then
 						table.insert(dest, value:match('^"(.*)"$') or value)
 						dest = nil
 					end

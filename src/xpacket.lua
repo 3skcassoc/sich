@@ -9,22 +9,33 @@ xpacket = xclass
 {
 	__parent = xpackage,
 	
+	receive = function (class, socket)
+		local head = socket:receive(4 + 2 + 4 + 4)
+		if not head then
+			return nil
+		end
+		local payload_length, code, id_from, id_to = xpack(head):read("4244")
+		local payload = socket:receive(payload_length)
+		if not payload then
+			return nil
+		end
+		return class(code, id_from, id_to, payload)
+	end,
+	
 	parse = function (self, vcore, vdata)
 		local read_proc = self[self.code]
 		if not read_proc then
-			return nil, "unknown"
+			log("warn", "%s: not implemented", xcmd.format(self.code))
+			return nil
 		end
 		
 		self.vcore = vcore
 		self.vdata = vdata
 		self.position = 1
 		local result = read_proc(self, {})
-		if not result then
-			return nil, "failed"
-		end
-		
-		if self:remain() > 0 then
-			return nil, "remain"
+		if (not result) or (self:remain() > 0) then
+			log("error", "%s: parse error", xcmd.format(self.code))
+			return nil
 		end
 		
 		result.code = self.code
@@ -42,29 +53,7 @@ xpacket = xclass
 		return result
 	end,
 	
-	read_authenticate = function (self, result)
-		result.error_code = self:read_byte()
-		
-		if not result.error_code then
-			return nil
-		end
-		
-		if result.error_code ~= 0 then
-			return result
-		end
-		
-		if not self:read_object(result, "ss444ts",
-			"nickname",
-			"country",
-			"score",
-			"games_played",
-			"games_win",
-			"last_game",
-			"info")
-		then
-			return nil
-		end
-		
+	read_server_clients = function (self, result)
 		result.clients = {}
 		while true do
 			local id = self:read_dword()
@@ -94,7 +83,9 @@ xpacket = xclass
 			end
 			table.insert(result.clients, client)
 		end
-		
+	end,
+	
+	read_server_sessions = function (self, result)
 		result.sessions = {}
 		while true do
 			local master_id = self:read_dword()
@@ -121,6 +112,36 @@ xpacket = xclass
 			table.insert(result.sessions, session)
 		end
 		return result
+	end,
+	
+	read_authenticate = function (self, result)
+		result.error_code = self:read_byte()
+		
+		if not result.error_code then
+			return nil
+		end
+		
+		if result.error_code ~= 0 then
+			return result
+		end
+		
+		if not self:read_object(result, "ss444ts",
+			"nickname",
+			"country",
+			"score",
+			"games_played",
+			"games_win",
+			"last_game",
+			"info")
+		then
+			return nil
+		end
+		
+		if not self:read_server_clients(result) then
+			return nil
+		end
+		
+		return self:read_server_sessions(result)
 	end,
 	
 	[xcmd.PING] = function (self, result)
@@ -265,9 +286,33 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_SESSION_LOCK] = function (self, result)
-		return self:read_clients(result, "41",
-			"id",
-			"states")
+		local count = self:read_dword()
+		if count == nil then
+			return nil
+		end
+		local clients = {}
+		for _ = 1, count do
+			local id = self:read_dword()
+			if id == nil then
+				return nil
+			elseif id == 0 then
+				if not self:read_object(result, "4",
+					"session_id")
+				then
+					return nil
+				end
+			else
+				local client = {id = id}
+				if not self:read_object(client, "1",
+					"states")
+				then
+					return nil
+				end
+				table.insert(clients, client)
+			end
+		end
+		result.clients = clients
+		return result
 	end,
 	
 	[xcmd.SERVER_SESSION_INFO] = function (self, result)
@@ -385,7 +430,7 @@ xpacket = xclass
 			local mark = self:read_byte()
 			if mark == nil then
 				return nil
-			elseif mark ~= 1 then
+			elseif mark == 0 then
 				break
 			end
 			local client = self:read_object({}, "ss444t",
@@ -397,6 +442,13 @@ xpacket = xclass
 				"last_game")
 			if not client then
 				return nil
+			end
+			if mark >= 2 then
+				if not self:read_object(client, "4",
+					"id")
+				then
+					return nil
+				end
 			end
 			table.insert(result.clients, client)
 		end
@@ -480,6 +532,31 @@ xpacket = xclass
 	end,
 	
 	[xcmd.USER_SESSION_REJOIN] = function (self, result)
+		return result
+	end,
+	
+	[xcmd.SERVER_GET_SESSIONS] = function (self, result)
+		return result
+	end,
+	
+	[xcmd.USER_GET_SESSIONS] = function (self, result)
+		return self:read_server_sessions(result)
+	end,
+	
+	[xcmd.SERVER_PING_LOCK] = function (self, result)
+		return result
+	end,
+	
+	[xcmd.SERVER_PING_UNLOCK] = function (self, result)
+		return result
+	end,
+	
+	[xcmd.SERVER_CHECKSUM] = function (self, result)
+		return self:read_object(result, "w",
+			"checksum")
+	end,
+	
+	[xcmd.USER_CHECKSUM] = function (self, result)
 		return result
 	end,
 	

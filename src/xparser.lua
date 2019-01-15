@@ -59,9 +59,8 @@ xparser = xclass
 		while i > 0 do
 			if self[i].key == key then
 				table.remove(self, i)
-			else
-				i = i - 1
 			end
+			i = i - 1
 		end
 	end,
 	

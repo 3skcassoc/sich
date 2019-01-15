@@ -341,7 +341,7 @@ end)
 if not xconfig.admin then
 	log("info", "disabled")
 else
-	local host, port = assert(xconfig.admin.host), assert(xconfig.admin.port)
+	local host, port = assert(xconfig.admin.host, "no admin.host"), assert(xconfig.admin.port, "no admin.port")
 	local server_socket = assert(xsocket.tcp())
 	assert(server_socket:bind(host, port))
 	assert(server_socket:listen(32))

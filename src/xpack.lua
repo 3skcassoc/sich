@@ -33,11 +33,11 @@ xpack = xclass
 	end,
 	
 	get_buffer = function (self)
-		if type(self.buffer) == "table" then
-			return table.concat(self.buffer)
-		else
-			return self.buffer
+		local buffer = self.buffer
+		if type(buffer) == "table" then
+			buffer = table.concat(buffer)
 		end
+		return buffer
 	end,
 	
 	remain = function (self)
@@ -169,7 +169,7 @@ xpack = xclass
 		end
 		local key, value, count = self:read("zz4")
 		if not key then
-			return
+			return nil
 		end
 		local parser = xparser(key, value)
 		for _ = 1, count do
@@ -379,7 +379,7 @@ xpack = xclass
 	
 	write_objects = function (self, objects, format, ...)
 		local count = 0
-		for _, object in pairs(objects) do
+		for _ in pairs(objects) do
 			count = count + 1
 		end
 		self:write_dword(count)
