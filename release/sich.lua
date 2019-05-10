@@ -3,7 +3,7 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.2.5"
+VERSION = "Sich v0.2.7"
 
 -- // xclass // --
 do
@@ -211,7 +211,18 @@ end
 
 -- // xconst // --
 do
-	local cmd =
+	xconst = setmetatable({},
+		{
+			__call = function (_, tbl)
+				local result = {}
+				for code, name in pairs(tbl) do
+					result[code] = name
+					result[name] = code
+				end
+				return result
+			end,
+		})
+	xcmd = xconst
 	{
 		[0x0190] = "SHELL_CONSOLE",                -- 
 		[0x0191] = "PING",                         -- lePingInfo
@@ -309,55 +320,48 @@ do
 		[0x0461] = "LAN_DO_READY_DONE",            -- LanDoReadyDone, leReady
 		[0x04B0] = "LAN_RECORD",                   -- 
 	}
-	xcmd = {}
-	for code, name in pairs(cmd) do
-		xcmd[code] = name
-		xcmd[name] = code
-	end
-	cmd = nil
 	xcmd.format = function (code)
 		return ("[0x%04X] %s"):format(code, xcmd[code] or "UNKNOWN")
 	end
-	xgc = {}
-	xgc.LAN_GENERATE = 1
-	xgc.LAN_READYSTART = 2
-	xgc.LAN_START = 3
-	xgc.LAN_ROOM_READY = 4
-	xgc.LAN_ROOM_START = 5
-	xgc.LAN_ROOM_CLIENT_CHANGES = 6
-	xgc.LAN_GAME_READY = 7
-	xgc.LAN_GAME_ANSWER_READY = 8
-	xgc.LAN_GAME_START = 9
-	xgc.LAN_GAME_SURRENDER = 10
-	xgc.LAN_GAME_SURRENDER_CONFIRM = 11
-	xgc.LAN_GAME_SERVER_LEAVE = 12
-	xgc.LAN_GAME_SESSION_RESULTS = 13
-	xgc.LAN_GAME_SYNC_REQUEST = 14
-	xgc.LAN_GAME_SYNC_DATA = 15
-	xgc.LAN_GAME_SYNC_GAMETIME = 16
-	xgc.LAN_GAME_SYNC_ALIVE = 17
-	xgc.LAN_ROOM_SERVER_DATASYNC = 100
-	xgc.LAN_ROOM_SERVER_DATACHANGE = 101
-	xgc.LAN_ROOM_CLIENT_DATACHANGE = 102
-	xgc.LAN_ROOM_CLIENT_LEAVE = 103
-	xgc.LAN_MODS_MODSYNC_REQUEST = 200
-	xgc.LAN_MODS_MODSYNC_PARSER = 201
-	xgc.LAN_MODS_CHECKSUM_REQUEST = 202
-	xgc.LAN_MODS_CHECKSUM_ANSWER = 203
-	xgc.LAN_MODS_CHECKSUM_REQUESTCANJOIN = 204
-	xgc.LAN_MODS_CHECKSUM_ANSWERCANJOIN = 205
-	xgc.LAN_MODS_CHECKSUM_ANSWERCANNOTJOIN = 206
-	xgc.LAN_ADVISER_CLIENT_DATACHANGE = 300
-	xgc.spectator_countryid = -2
-	xgc.player_victorystate_none = 0
-	xgc.player_victorystate_win = 1
-	xgc.player_victorystate_lose = 2
-	xgc.player_victorystate =
+	xconst.parser = xconst
 	{
-		[xgc.player_victorystate_none] = "none",
-		[xgc.player_victorystate_win] = "win",
-		[xgc.player_victorystate_lose] = "lose",
+		[  1] = "LAN_GENERATE",
+		[  2] = "LAN_READYSTART",
+		[  3] = "LAN_START",
+		[  4] = "LAN_ROOM_READY",
+		[  5] = "LAN_ROOM_START",
+		[  6] = "LAN_ROOM_CLIENT_CHANGES",
+		[  7] = "LAN_GAME_READY",
+		[  8] = "LAN_GAME_ANSWER_READY",
+		[  9] = "LAN_GAME_START",
+		[ 10] = "LAN_GAME_SURRENDER",
+		[ 11] = "LAN_GAME_SURRENDER_CONFIRM",
+		[ 12] = "LAN_GAME_SERVER_LEAVE",
+		[ 13] = "LAN_GAME_SESSION_RESULTS",
+		[ 14] = "LAN_GAME_SYNC_REQUEST",
+		[ 15] = "LAN_GAME_SYNC_DATA",
+		[ 16] = "LAN_GAME_SYNC_GAMETIME",
+		[ 17] = "LAN_GAME_SYNC_ALIVE",
+		[100] = "LAN_ROOM_SERVER_DATASYNC",
+		[101] = "LAN_ROOM_SERVER_DATACHANGE",
+		[102] = "LAN_ROOM_CLIENT_DATACHANGE",
+		[103] = "LAN_ROOM_CLIENT_LEAVE",
+		[200] = "LAN_MODS_MODSYNC_REQUEST",
+		[201] = "LAN_MODS_MODSYNC_PARSER",
+		[202] = "LAN_MODS_CHECKSUM_REQUEST",
+		[203] = "LAN_MODS_CHECKSUM_ANSWER",
+		[204] = "LAN_MODS_CHECKSUM_REQUESTCANJOIN",
+		[205] = "LAN_MODS_CHECKSUM_ANSWERCANJOIN",
+		[206] = "LAN_MODS_CHECKSUM_ANSWERCANNOTJOIN",
+		[300] = "LAN_ADVISER_CLIENT_DATACHANGE",
 	}
+	xconst.player_victorystate = xconst
+	{
+		[0] = "none",
+		[1] = "win",
+		[2] = "lose",
+	}
+	xconst.spectator_countryid = -2
 end
 
 -- // xkeys // --
@@ -609,13 +613,13 @@ do
 				return null_parser
 			end
 			local key, value, count = self:read("zz4")
-			if not key then
+			if key == nil then
 				return nil
 			end
 			local parser = xparser(key, value)
 			for _ = 1, count do
 				local node = self:read_parser()
-				if not node then
+				if node == nil then
 					return nil
 				end
 				parser:append(node)
@@ -953,6 +957,7 @@ do
 				end
 				table.insert(result.clients, client)
 			end
+			return result
 		end,
 		read_server_sessions = function (self, result)
 			result.sessions = {}
@@ -984,7 +989,7 @@ do
 		end,
 		read_authenticate = function (self, result)
 			result.error_code = self:read_byte()
-			if not result.error_code then
+			if result.error_code == nil then
 				return nil
 			end
 			if result.error_code ~= 0 then
@@ -1399,16 +1404,6 @@ do
 				"fog_of_war",
 				"money")
 		end,
-		[xcmd.LAN_DO_START] = function (self, result)
-		end,
-		[xcmd.LAN_DO_START_GAME] = function (self, result)
-		end,
-		[xcmd.LAN_DO_READY] = function (self, result)
-		end,
-		[xcmd.LAN_DO_READY_DONE] = function (self, result)
-		end,
-		[xcmd.LAN_RECORD] = function (self, result)
-		end,
 	}
 end
 
@@ -1692,7 +1687,7 @@ do
 			if err ~= "closed" then
 				log("debug", "socket error: %s", err)
 			end
-			self.closed = true
+			self:close()
 			return nil, err
 		end,
 		bind = function (self, host, port)
@@ -1804,6 +1799,9 @@ do
 			end
 		end,
 		sendto = function (self, data, ip, port)
+			if self.closed then
+				return nil, "closed"
+			end
 			while true do
 				coroutine.yield(self.sock, sendt)
 				local ok, err = self.sock:sendto(data, ip, port)
@@ -1815,6 +1813,9 @@ do
 			end
 		end,
 		receivefrom = function (self)
+			if self.closed then
+				return nil, "closed"
+			end
 			while true do
 				coroutine.yield(self.sock, recvt)
 				local data, ip, port = self.sock:receivefrom()
@@ -1826,6 +1827,9 @@ do
 			end
 		end,
 		close = function (self)
+			if self.closed then
+				return false
+			end
 			self.closed = true
 			self.sock:shutdown("both")
 			return self.sock:close()
@@ -1908,7 +1912,7 @@ do
 	{
 		threads = 0,
 		tcp = function ()
-			local sock, msg = socket.tcp()
+			local sock, msg = (socket.tcp4 or socket.tcp)()
 			if not sock then
 				return nil, msg
 			end
@@ -1919,7 +1923,7 @@ do
 			return wrapper(sock, true)
 		end,
 		udp = function ()
-			local sock, msg = socket.udp()
+			local sock, msg = (socket.udp4 or socket.udp)()
 			if not sock then
 				return nil, msg
 			end
@@ -1996,12 +2000,15 @@ end
 -- // xsession // --
 do
 	local log = xlog("xsession")
+	local next_session_id = 1
 	xsession = xclass
 	{
 		__parent = xclients,
 		__create = function (self, remote, request)
 			if remote.session then
 				remote.session:leave(remote)
+			elseif remote.server.sessions[remote.id] then
+				return
 			end
 			self = xclients.__create(self)
 			self.real_name = ""
@@ -2009,7 +2016,8 @@ do
 			self.locked = false
 			self.closed = false
 			self.server = remote.server
-			self.session_id = remote.server.next_session_id
+			self.session_id = next_session_id
+			next_session_id = next_session_id + 1
 			self.master_id = remote.id
 			self.max_players = request.max_players
 			self.password = request.password
@@ -2026,6 +2034,7 @@ do
 			remote.session = self
 			remote:set_state("session", true)
 			remote:set_state("master", true)
+			self.server.sessions[self.master_id] = self
 			xpackage(xcmd.USER_SESSION_CREATE, remote.id, 0)
 				:write_byte(remote.states)
 				:write_object(self, "4ss4b1",
@@ -2152,7 +2161,7 @@ do
 				end
 			end
 			for _, client in pairs(self.clients) do
-				if client.cid == xgc.spectator_countryid then
+				if client.cid == xconst.spectator_countryid then
 					self.score_updated[client.id] = true
 				end
 				client:set_state("played", true)
@@ -2271,7 +2280,7 @@ do
 				local res = tonumber(node:get("res"))
 				if not id or not res then
 					--
-				elseif id == 0 or res == xgc.player_victorystate_none then
+				elseif id == 0 or res == xconst.player_victorystate.none then
 					--
 				elseif self.score_updated[id] then
 					--
@@ -2288,7 +2297,7 @@ do
 					else
 						client.last_game = xsocket.gettime()
 						client.games_played = client.games_played + 1
-						if res == xgc.player_victorystate_win then
+						if res == xconst.player_victorystate.win then
 							client.games_win = client.games_win + 1
 						end
 						--[[
@@ -2309,7 +2318,7 @@ do
 						]]
 						client.score = math.ceil(client.games_win / client.games_played * 2000.0)
 						log("info", "updating score for %s: state=%s, played=%s, win=%s, score=%s", client.nickname,
-							xgc.player_victorystate[res], client.games_played, client.games_win, client.score)
+							xconst.player_victorystate[res], client.games_played, client.games_win, client.score)
 						register:update(client, true)
 						save_register = true
 						self.score_updated[id] = true
@@ -2357,7 +2366,6 @@ do
 			self.vcore = vcore
 			self.vdata = vdata
 			self.sessions = {}
-			self.next_session_id = 1
 			return self
 		end,
 		connected = function (self, remote)
@@ -2479,8 +2487,7 @@ do
 				:dispatch(remote)
 		end,
 		[xcmd.SERVER_SESSION_CREATE] = function (self, remote, request)
-			self.sessions[remote.id] = xsession(remote, request)
-			self.next_session_id = self.next_session_id + 1
+			xsession(remote, request)
 		end,
 		[xcmd.SERVER_SESSION_JOIN] = function (self, remote, request)
 			if not self.sessions[request.master_id] then
@@ -2590,7 +2597,7 @@ do
 			return self:master_session_action("clscore", remote, request)
 		end,
 		[xcmd.SERVER_SESSION_PARSER] = function (self, remote, request)
-			if request.parser_id == xgc.LAN_ROOM_SERVER_DATASYNC then
+			if request.parser_id == xconst.parser.LAN_ROOM_SERVER_DATASYNC then
 				self:master_session_action("datasync", remote, request)
 			end
 			return xpackage(xcmd.USER_SESSION_PARSER, request.id_from, request.id_to)
@@ -2613,8 +2620,8 @@ do
 		[xcmd.SERVER_CHECKSUM] = function (self, remote, request)
 		end,
 		[xcmd.LAN_PARSER] = function (self, remote, request)
-			if request.parser_id == xgc.LAN_GAME_SESSION_RESULTS
-			or request.parser_id == xgc.LAN_GAME_SURRENDER_CONFIRM then
+			if request.parser_id == xconst.parser.LAN_GAME_SESSION_RESULTS
+			or request.parser_id == xconst.parser.LAN_GAME_SURRENDER_CONFIRM then
 				return self:master_session_action("results", remote, request)
 			end
 		end,
@@ -2628,8 +2635,7 @@ do
 	end
 	servers = {}
 	local function get_server(vcore, vdata)
-		local vcore_str, vdata_str = version_str(vcore, vdata)
-		local tag = vcore_str .. "/" .. vdata_str
+		local tag = ("%s/%s"):format(version_str(vcore, vdata))
 		local server = servers[tag]
 		if not server then
 			log("debug", "creating new server: %s", tag)

@@ -83,6 +83,7 @@ xpacket = xclass
 			end
 			table.insert(result.clients, client)
 		end
+		return result
 	end,
 	
 	read_server_sessions = function (self, result)
@@ -117,7 +118,7 @@ xpacket = xclass
 	read_authenticate = function (self, result)
 		result.error_code = self:read_byte()
 		
-		if not result.error_code then
+		if result.error_code == nil then
 			return nil
 		end
 		
@@ -589,20 +590,5 @@ xpacket = xclass
 			"battlefield",
 			"fog_of_war",
 			"money")
-	end,
-	
-	[xcmd.LAN_DO_START] = function (self, result)
-	end,
-	
-	[xcmd.LAN_DO_START_GAME] = function (self, result)
-	end,
-	
-	[xcmd.LAN_DO_READY] = function (self, result)
-	end,
-	
-	[xcmd.LAN_DO_READY_DONE] = function (self, result)
-	end,
-	
-	[xcmd.LAN_RECORD] = function (self, result)
 	end,
 }

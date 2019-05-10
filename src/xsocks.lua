@@ -92,7 +92,7 @@ xsocks = xclass
 		end
 		local host = make_addr(ip0, ip1, ip2, ip3)
 		local port = make_port(port0, port1)
-		if host:match("^0.0.0.") then
+		if host:match("^0%.0%.0%.") then
 			host = self:receive_null_string()
 			if not host then
 				return

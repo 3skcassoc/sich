@@ -54,7 +54,7 @@ if not is_file(servers_path .. ".bak") then
 end
 
 local servers = {}
-local selected = 1
+local selected = 0
 
 do
 	local section_begin = false
@@ -202,12 +202,12 @@ toolbar = iup.hbox
 			local ok, ip, port = nil, "127.0.0.1", 31523
 			while true do
 				ok, ip, port = iup.GetParam("add new server", nil, "ip:%s\nport: %i\n", ip, port)
-				if not ok then
-					return
+				if not ok then return end
+				if ip:match("^[0-9]+%.[0-9]+%.[0-9]+%.[0-9]+$") then
+					table.insert(servers, ip .. ":" .. port)
+					selected = #servers
+					return update_listbox()
 				end
-				table.insert(servers, ip .. ":" .. port)
-				selected = #servers
-				return update_listbox()
 			end
 		end,
 	},
@@ -219,14 +219,15 @@ toolbar = iup.hbox
 		image = "IUP_FileProperties",
 		button_cb = function (self, _, down)
 			if down ~= 1 then return end
+			if selected == 0 then return end
 			local ok, ip, port = nil, servers[selected]:match("^(.+)%:(.+)$")
 			while true do
 				ok, ip, port = iup.GetParam("edit server", nil, "ip:%s\nport: %i\n", ip, port)
-				if not ok then
-					return
+				if not ok then return end
+				if ip:match("^[0-9]+%.[0-9]+%.[0-9]+%.[0-9]+$") then
+					servers[selected] = ip .. ":" .. port
+					return update_listbox()
 				end
-				servers[selected] = ip .. ":" .. port
-				return update_listbox()
 			end
 		end,
 	},
@@ -238,15 +239,14 @@ toolbar = iup.hbox
 		image = "IUP_EditErase",
 		button_cb = function (self, _, down)
 			if down ~= 1 then return end
+			if selected == 0 then return end
 			ask_remove:popup()
-			if tonumber(ask_remove.buttonresponse) ~= 1 then
-				return
-			end
+			if tonumber(ask_remove.buttonresponse) ~= 1 then return end
 			table.remove(servers, selected)
 			if selected > #servers then
 				selected = #servers
 			end
-			update_listbox()
+			return update_listbox()
 		end,
 	},
 	iup.button
@@ -257,15 +257,14 @@ toolbar = iup.hbox
 		image = "IUP_ArrowUp",
 		button_cb = function (self, _, down)
 			if down ~= 1 then return end
-			if selected == 1 then
-				return
-			end
+			if selected == 0 then return end
+			if selected == 1 then return end
 			local upper = selected - 1
 			local server = servers[upper]
 			servers[upper] = servers[selected]
 			servers[selected] = server
 			selected = upper
-			update_listbox()
+			return update_listbox()
 		end,
 	},
 	iup.button
@@ -276,15 +275,14 @@ toolbar = iup.hbox
 		image = "IUP_ArrowDown",
 		button_cb = function (self, _, down)
 			if down ~= 1 then return end
-			if selected == #servers then
-				return
-			end
+			if selected == 0 then return end
+			if selected == #servers then return end
 			local lower = selected + 1
 			local server = servers[lower]
 			servers[lower] = servers[selected]
 			servers[selected] = server
 			selected = lower
-			update_listbox()
+			return update_listbox()
 		end,
 	},
 	margin = "10x2",

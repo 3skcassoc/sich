@@ -49,7 +49,6 @@ local server_core = xclass
 		self.vcore = vcore
 		self.vdata = vdata
 		self.sessions = {}
-		self.next_session_id = 1
 		return self
 	end,
 	
@@ -183,8 +182,7 @@ local server_core = xclass
 	end,
 	
 	[xcmd.SERVER_SESSION_CREATE] = function (self, remote, request)
-		self.sessions[remote.id] = xsession(remote, request)
-		self.next_session_id = self.next_session_id + 1
+		xsession(remote, request)
 	end,
 	
 	[xcmd.SERVER_SESSION_JOIN] = function (self, remote, request)
@@ -307,7 +305,7 @@ local server_core = xclass
 	end,
 	
 	[xcmd.SERVER_SESSION_PARSER] = function (self, remote, request)
-		if request.parser_id == xgc.LAN_ROOM_SERVER_DATASYNC then
+		if request.parser_id == xconst.parser.LAN_ROOM_SERVER_DATASYNC then
 			self:master_session_action("datasync", remote, request)
 		end
 		return xpackage(xcmd.USER_SESSION_PARSER, request.id_from, request.id_to)
@@ -335,8 +333,8 @@ local server_core = xclass
 	end,
 	
 	[xcmd.LAN_PARSER] = function (self, remote, request)
-		if request.parser_id == xgc.LAN_GAME_SESSION_RESULTS
-		or request.parser_id == xgc.LAN_GAME_SURRENDER_CONFIRM then
+		if request.parser_id == xconst.parser.LAN_GAME_SESSION_RESULTS
+		or request.parser_id == xconst.parser.LAN_GAME_SURRENDER_CONFIRM then
 			return self:master_session_action("results", remote, request)
 		end
 	end,
@@ -353,8 +351,7 @@ end
 servers = {}
 
 local function get_server(vcore, vdata)
-	local vcore_str, vdata_str = version_str(vcore, vdata)
-	local tag = vcore_str .. "/" .. vdata_str
+	local tag = ("%s/%s"):format(version_str(vcore, vdata))
 	local server = servers[tag]
 	if not server then
 		log("debug", "creating new server: %s", tag)

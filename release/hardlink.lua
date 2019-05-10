@@ -216,7 +216,7 @@ do
 			if err ~= "closed" then
 				log("debug", "socket error: %s", err)
 			end
-			self.closed = true
+			self:close()
 			return nil, err
 		end,
 		bind = function (self, host, port)
@@ -328,6 +328,9 @@ do
 			end
 		end,
 		sendto = function (self, data, ip, port)
+			if self.closed then
+				return nil, "closed"
+			end
 			while true do
 				coroutine.yield(self.sock, sendt)
 				local ok, err = self.sock:sendto(data, ip, port)
@@ -339,6 +342,9 @@ do
 			end
 		end,
 		receivefrom = function (self)
+			if self.closed then
+				return nil, "closed"
+			end
 			while true do
 				coroutine.yield(self.sock, recvt)
 				local data, ip, port = self.sock:receivefrom()
@@ -350,6 +356,9 @@ do
 			end
 		end,
 		close = function (self)
+			if self.closed then
+				return false
+			end
 			self.closed = true
 			self.sock:shutdown("both")
 			return self.sock:close()
@@ -432,7 +441,7 @@ do
 	{
 		threads = 0,
 		tcp = function ()
-			local sock, msg = socket.tcp()
+			local sock, msg = (socket.tcp4 or socket.tcp)()
 			if not sock then
 				return nil, msg
 			end
@@ -443,7 +452,7 @@ do
 			return wrapper(sock, true)
 		end,
 		udp = function ()
-			local sock, msg = socket.udp()
+			local sock, msg = (socket.udp4 or socket.udp)()
 			if not sock then
 				return nil, msg
 			end
@@ -738,13 +747,13 @@ do
 				return null_parser
 			end
 			local key, value, count = self:read("zz4")
-			if not key then
+			if key == nil then
 				return nil
 			end
 			local parser = xparser(key, value)
 			for _ = 1, count do
 				local node = self:read_parser()
-				if not node then
+				if node == nil then
 					return nil
 				end
 				parser:append(node)
@@ -1158,7 +1167,7 @@ do
 			end
 			local host = make_addr(ip0, ip1, ip2, ip3)
 			local port = make_port(port0, port1)
-			if host:match("^0.0.0.") then
+			if host:match("^0%.0%.0%.") then
 				host = self:receive_null_string()
 				if not host then
 					return

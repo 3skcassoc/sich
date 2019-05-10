@@ -8,6 +8,8 @@ require "xsocket"
 
 local log = xlog("xsession")
 
+local next_session_id = 1
+
 xsession = xclass
 {
 	__parent = xclients,
@@ -15,6 +17,8 @@ xsession = xclass
 	__create = function (self, remote, request)
 		if remote.session then
 			remote.session:leave(remote)
+		elseif remote.server.sessions[remote.id] then
+			return
 		end
 		
 		self = xclients.__create(self)
@@ -23,7 +27,8 @@ xsession = xclass
 		self.locked = false
 		self.closed = false
 		self.server = remote.server
-		self.session_id = remote.server.next_session_id
+		self.session_id = next_session_id
+		next_session_id = next_session_id + 1
 		self.master_id = remote.id
 		self.max_players = request.max_players
 		self.password = request.password
@@ -43,6 +48,7 @@ xsession = xclass
 		remote:set_state("session", true)
 		remote:set_state("master", true)
 		
+		self.server.sessions[self.master_id] = self
 		xpackage(xcmd.USER_SESSION_CREATE, remote.id, 0)
 			:write_byte(remote.states)
 			:write_object(self, "4ss4b1",
@@ -189,7 +195,7 @@ xsession = xclass
 		end
 		
 		for _, client in pairs(self.clients) do
-			if client.cid == xgc.spectator_countryid then
+			if client.cid == xconst.spectator_countryid then
 				self.score_updated[client.id] = true
 			end
 			client:set_state("played", true)
@@ -317,7 +323,7 @@ xsession = xclass
 			local res = tonumber(node:get("res"))
 			if not id or not res then
 				--
-			elseif id == 0 or res == xgc.player_victorystate_none then
+			elseif id == 0 or res == xconst.player_victorystate.none then
 				--
 			elseif self.score_updated[id] then
 				--
@@ -335,7 +341,7 @@ xsession = xclass
 				else
 					client.last_game = xsocket.gettime()
 					client.games_played = client.games_played + 1
-					if res == xgc.player_victorystate_win then
+					if res == xconst.player_victorystate.win then
 						client.games_win = client.games_win + 1
 					end
 					
@@ -357,7 +363,7 @@ xsession = xclass
 					]]
 					client.score = math.ceil(client.games_win / client.games_played * 2000.0)
 					log("info", "updating score for %s: state=%s, played=%s, win=%s, score=%s", client.nickname,
-						xgc.player_victorystate[res], client.games_played, client.games_win, client.score)
+						xconst.player_victorystate[res], client.games_played, client.games_win, client.score)
 					
 					register:update(client, true)
 					save_register = true

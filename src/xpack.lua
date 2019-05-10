@@ -168,13 +168,13 @@ xpack = xclass
 			return null_parser
 		end
 		local key, value, count = self:read("zz4")
-		if not key then
+		if key == nil then
 			return nil
 		end
 		local parser = xparser(key, value)
 		for _ = 1, count do
 			local node = self:read_parser()
-			if not node then
+			if node == nil then
 				return nil
 			end
 			parser:append(node)

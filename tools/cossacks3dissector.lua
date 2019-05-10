@@ -137,6 +137,21 @@ names.command = names
 	[0x04B0] = "LAN_RECORD",
 }
 
+names.register = names
+{
+	[0] = "Success",                        [1] = "This e-mail is already in use",
+	                                        [3] = "Incorrect Internet game key",
+	[4] = "Core version is outdated",       [5] = "Data version is outdated",
+	[6] = "Incorrect registration data",
+}
+
+names.authenticate = names
+{
+	[0] = "Success",                        [1] = "Invalid password",
+	[2] = "This account is blocked",        [3] = "Incorrect Internet game key",
+	[4] = "Core version is outdated",       [5] = "Data version is outdated",
+}
+
 names.parser = names
 {
 	[1] = "LAN_GENERATE",
@@ -450,7 +465,7 @@ local reader = setmetatable(
 		end
 		self.position = self.position + size
 		return (tostring(self.range(self.position - size, size):bytes())
-			:gsub('..', function (hex) return string.char(tonumber(hex, 16)) end))
+			:gsub("..", function (hex) return string.char(tonumber(hex, 16)) end))
 	end,
 	
 	number = function (self, size)
@@ -656,7 +671,7 @@ local reader = setmetatable(
 				if not value_names then
 					title = ("%s: %d"):format(title, value)
 				else
-					local name = ''
+					local name = ""
 					if getmetatable(value_names) == names then
 						name = value_names[value]
 					else
@@ -919,9 +934,18 @@ local reader = setmetatable(
 	end,
 	
 	authenticate = function (self, tree)
+		local position = self.position
+		
 		local error_code = self:byte()
-		if not (error_code and error_code == 0) then
+		if not error_code then
 			return
+		end
+		
+		local error_names = (self.result.code == cmd.USER_REGISTER and names.register or names.authenticate)
+		tree:add(self.range(position, self.position - position),
+			("error_code: %s (%s)"):format(error_code, error_names[error_code]))
+		if error_code ~= 0 then
+			return true
 		end
 		
 		if not self:object(tree, "ss444ts",

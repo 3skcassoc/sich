@@ -14,7 +14,7 @@ local wrapper wrapper = setmetatable(
 		if err ~= "closed" then
 			log("debug", "socket error: %s", err)
 		end
-		self.closed = true
+		self:close()
 		return nil, err
 	end,
 	
@@ -134,6 +134,9 @@ local wrapper wrapper = setmetatable(
 	end,
 	
 	sendto = function (self, data, ip, port)
+		if self.closed then
+			return nil, "closed"
+		end
 		while true do
 			coroutine.yield(self.sock, sendt)
 			local ok, err = self.sock:sendto(data, ip, port)
@@ -146,6 +149,9 @@ local wrapper wrapper = setmetatable(
 	end,
 	
 	receivefrom = function (self)
+		if self.closed then
+			return nil, "closed"
+		end
 		while true do
 			coroutine.yield(self.sock, recvt)
 			local data, ip, port = self.sock:receivefrom()
@@ -158,6 +164,9 @@ local wrapper wrapper = setmetatable(
 	end,
 	
 	close = function (self)
+		if self.closed then
+			return false
+		end
 		self.closed = true
 		self.sock:shutdown("both")
 		return self.sock:close()
@@ -248,7 +257,7 @@ xsocket =
 	threads = 0,
 	
 	tcp = function ()
-		local sock, msg = socket.tcp()
+		local sock, msg = (socket.tcp4 or socket.tcp)()
 		if not sock then
 			return nil, msg
 		end
@@ -260,7 +269,7 @@ xsocket =
 	end,
 	
 	udp = function ()
-		local sock, msg = socket.udp()
+		local sock, msg = (socket.udp4 or socket.udp)()
 		if not sock then
 			return nil, msg
 		end

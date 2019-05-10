@@ -1,4 +1,16 @@
-local cmd =
+xconst = setmetatable({},
+	{
+		__call = function (_, tbl)
+			local result = {}
+			for code, name in pairs(tbl) do
+				result[code] = name
+				result[name] = code
+			end
+			return result
+		end,
+	})
+
+xcmd = xconst
 {
 	[0x0190] = "SHELL_CONSOLE",                -- 
 	[0x0191] = "PING",                         -- lePingInfo
@@ -98,58 +110,48 @@ local cmd =
 	[0x04B0] = "LAN_RECORD",                   -- 
 }
 
-xcmd = {}
-for code, name in pairs(cmd) do
-	xcmd[code] = name
-	xcmd[name] = code
-end
-cmd = nil
-
 xcmd.format = function (code)
 	return ("[0x%04X] %s"):format(code, xcmd[code] or "UNKNOWN")
 end
 
-xgc = {}
-
-xgc.LAN_GENERATE = 1
-xgc.LAN_READYSTART = 2
-xgc.LAN_START = 3
-xgc.LAN_ROOM_READY = 4
-xgc.LAN_ROOM_START = 5
-xgc.LAN_ROOM_CLIENT_CHANGES = 6
-xgc.LAN_GAME_READY = 7
-xgc.LAN_GAME_ANSWER_READY = 8
-xgc.LAN_GAME_START = 9
-xgc.LAN_GAME_SURRENDER = 10
-xgc.LAN_GAME_SURRENDER_CONFIRM = 11
-xgc.LAN_GAME_SERVER_LEAVE = 12
-xgc.LAN_GAME_SESSION_RESULTS = 13
-xgc.LAN_GAME_SYNC_REQUEST = 14
-xgc.LAN_GAME_SYNC_DATA = 15
-xgc.LAN_GAME_SYNC_GAMETIME = 16
-xgc.LAN_GAME_SYNC_ALIVE = 17
-xgc.LAN_ROOM_SERVER_DATASYNC = 100
-xgc.LAN_ROOM_SERVER_DATACHANGE = 101
-xgc.LAN_ROOM_CLIENT_DATACHANGE = 102
-xgc.LAN_ROOM_CLIENT_LEAVE = 103
-xgc.LAN_MODS_MODSYNC_REQUEST = 200
-xgc.LAN_MODS_MODSYNC_PARSER = 201
-xgc.LAN_MODS_CHECKSUM_REQUEST = 202
-xgc.LAN_MODS_CHECKSUM_ANSWER = 203
-xgc.LAN_MODS_CHECKSUM_REQUESTCANJOIN = 204
-xgc.LAN_MODS_CHECKSUM_ANSWERCANJOIN = 205
-xgc.LAN_MODS_CHECKSUM_ANSWERCANNOTJOIN = 206
-xgc.LAN_ADVISER_CLIENT_DATACHANGE = 300
-
-xgc.spectator_countryid = -2
-
-xgc.player_victorystate_none = 0
-xgc.player_victorystate_win = 1
-xgc.player_victorystate_lose = 2
-
-xgc.player_victorystate =
+xconst.parser = xconst
 {
-	[xgc.player_victorystate_none] = "none",
-	[xgc.player_victorystate_win] = "win",
-	[xgc.player_victorystate_lose] = "lose",
+	[  1] = "LAN_GENERATE",
+	[  2] = "LAN_READYSTART",
+	[  3] = "LAN_START",
+	[  4] = "LAN_ROOM_READY",
+	[  5] = "LAN_ROOM_START",
+	[  6] = "LAN_ROOM_CLIENT_CHANGES",
+	[  7] = "LAN_GAME_READY",
+	[  8] = "LAN_GAME_ANSWER_READY",
+	[  9] = "LAN_GAME_START",
+	[ 10] = "LAN_GAME_SURRENDER",
+	[ 11] = "LAN_GAME_SURRENDER_CONFIRM",
+	[ 12] = "LAN_GAME_SERVER_LEAVE",
+	[ 13] = "LAN_GAME_SESSION_RESULTS",
+	[ 14] = "LAN_GAME_SYNC_REQUEST",
+	[ 15] = "LAN_GAME_SYNC_DATA",
+	[ 16] = "LAN_GAME_SYNC_GAMETIME",
+	[ 17] = "LAN_GAME_SYNC_ALIVE",
+	[100] = "LAN_ROOM_SERVER_DATASYNC",
+	[101] = "LAN_ROOM_SERVER_DATACHANGE",
+	[102] = "LAN_ROOM_CLIENT_DATACHANGE",
+	[103] = "LAN_ROOM_CLIENT_LEAVE",
+	[200] = "LAN_MODS_MODSYNC_REQUEST",
+	[201] = "LAN_MODS_MODSYNC_PARSER",
+	[202] = "LAN_MODS_CHECKSUM_REQUEST",
+	[203] = "LAN_MODS_CHECKSUM_ANSWER",
+	[204] = "LAN_MODS_CHECKSUM_REQUESTCANJOIN",
+	[205] = "LAN_MODS_CHECKSUM_ANSWERCANJOIN",
+	[206] = "LAN_MODS_CHECKSUM_ANSWERCANNOTJOIN",
+	[300] = "LAN_ADVISER_CLIENT_DATACHANGE",
 }
+
+xconst.player_victorystate = xconst
+{
+	[0] = "none",
+	[1] = "win",
+	[2] = "lose",
+}
+
+xconst.spectator_countryid = -2
