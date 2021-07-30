@@ -16,12 +16,12 @@ elseif type(keystore) == "table" then
 			keys[key] = true
 		end
 	end
-	xkeys = function (cdkey)
+	xkeys = function (cdkey, email)
 		return keys[cdkey] and true or false
 	end
 else
 	log("info", "disabled")
-	xkeys = function (cdkey)
+	xkeys = function (cdkey, email)
 		return true
 	end
 end

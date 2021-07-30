@@ -1,4 +1,4 @@
-local call = function (class, ...)
+local new = function (class, ...)
 	return setmetatable({__class = class}, class.__objmt):__create(...)
 end
 
@@ -13,7 +13,7 @@ xclass = setmetatable(
 		class.__objmt = {__index = class}
 		return setmetatable(class, {
 			__index = class.__parent or xclass,
-			__call = call,
+			__call = new,
 		})
 	end,
 })

@@ -1,6 +1,7 @@
 require "xlog"
 require "xconfig"
 require "xsocket"
+require "xversion"
 
 local log = xlog("xecho")
 
@@ -19,7 +20,7 @@ else
 	
 	local echo_socket = assert(xsocket.udp())
 	assert(echo_socket:setsockname(host or "*", port or 31523))
-	log("info", "listening at udp:%s:%s", echo_socket:getsockname())
+	log("info", "listening at %s", tostring(echo_socket))
 	xsocket.spawn(function ()
 		while true do
 			local msg, ip, port = echo_socket:receivefrom()
@@ -27,7 +28,7 @@ else
 				return log("warn", "closed")
 			end
 			log("debug", "got %q from %s:%s", msg, ip, port)
-			echo_socket:sendto(title or VERSION, ip, port)
+			echo_socket:sendto(title or xversion.sich, ip, port)
 		end
 	end)
 end

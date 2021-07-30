@@ -157,6 +157,7 @@ xregister = xclass
 			return false
 		end
 		self[id] = false
+		self:save()
 		return true
 	end,
 	

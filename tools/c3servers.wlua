@@ -1,6 +1,6 @@
-require "socket"
 require "iuplua"
 require "iupluaimglib"
+local socket = require "socket"
 
 local function is_file(filepath)
 	local file = io.open(filepath)

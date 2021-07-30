@@ -160,6 +160,8 @@ xsocks = xclass
 		elseif atyp == 0x04 then
 			log("warn", "socks5: IPv6")
 			return
+		else
+			return
 		end
 		local port0, port1 = self:receive(2)
 		if not port0 then

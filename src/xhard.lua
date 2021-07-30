@@ -200,6 +200,7 @@ xhard = xclass
 	
 	process = function (self)
 		log("info", "connected to %s:%s", self.host, self.port)
+		self.socket:setoption("keepalive", true)
 		while true do
 			local pack = self:receive()
 			if not pack then
@@ -238,7 +239,7 @@ xhard_server = xclass
 		local server_socket = assert(xsocket.tcp())
 		assert(server_socket:bind(host, port))
 		assert(server_socket:listen(32))
-		log("info", "listening at tcp:%s:%s", server_socket:getsockname())
+		log("info", "listening at %s", tostring(server_socket))
 		xsocket.spawn(
 			function ()
 				while true do
@@ -257,7 +258,7 @@ xhard_client = xclass
 		local socket = assert(xsocket.tcp())
 		assert(socket:bind(lhost, lport))
 		assert(socket:listen(32))
-		log("info", "listening at tcp:%s:%s", socket:getsockname())
+		log("info", "listening at %s", tostring(socket))
 		xsocket.spawn(
 			function ()
 				while true do
@@ -280,7 +281,7 @@ xhard_client = xclass
 		local socket = assert(xsocket.tcp())
 		assert(socket:bind(lhost, lport))
 		assert(socket:listen(32))
-		log("info", "listening at tcp:%s:%s", socket:getsockname())
+		log("info", "listening at %s", tostring(socket))
 		xsocket.spawn(
 			function ()
 				while true do

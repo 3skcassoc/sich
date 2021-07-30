@@ -168,7 +168,9 @@ local wrapper wrapper = setmetatable(
 			return false
 		end
 		self.closed = true
-		self.sock:shutdown("both")
+		if self.sock.shutdown then
+			self.sock:shutdown("both")
+		end
 		return self.sock:close()
 	end,
 },
@@ -195,6 +197,13 @@ local wrapper wrapper = setmetatable(
 
 wrapper.index_mt = {
 	__index = wrapper,
+	
+	__tostring = function (self)
+		local sock = self.sock
+		local proto = tostring(sock):match("^[^{]+")
+		local _, ip, port = pcall(sock.getsockname, sock)
+		return ("%s:%s:%s"):format(proto or "?", ip or "?", port or "?")
+	end,
 }
 
 if package.config:sub(1, 1) == "\\" then
@@ -205,12 +214,12 @@ end
 
 local function append(thread, success, sock, set)
 	if not success then
-		xsocket.threads = xsocket.threads - 1
+		xsocket.thread_count = xsocket.thread_count - 1
 		log("error", "thread crashed: %s", debug.traceback(thread, sock))
 		return
 	end
 	if not sock then
-		xsocket.threads = xsocket.threads - 1
+		xsocket.thread_count = xsocket.thread_count - 1
 		return
 	end
 	if set[sock] then
@@ -254,7 +263,11 @@ end
 
 xsocket =
 {
-	threads = 0,
+	sendt = sendt,
+	recvt = recvt,
+	slept = slept,
+	
+	thread_count = 0,
 	
 	tcp = function ()
 		local sock, msg = (socket.tcp4 or socket.tcp)()
@@ -302,7 +315,7 @@ xsocket =
 				func(...)
 				return nil, nil
 			end)
-		xsocket.threads = xsocket.threads + 1
+		xsocket.thread_count = xsocket.thread_count + 1
 		return append(thread, coroutine.resume(thread, ...))
 	end,
 	

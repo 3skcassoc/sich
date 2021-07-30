@@ -9,6 +9,7 @@ require "xregister"
 require "xclient"
 require "xclients"
 require "xsession"
+require "xversion"
 
 local log = xlog("xserver")
 
@@ -380,7 +381,7 @@ local auth_core = xclass
 		-- 4 (core) Your version is outdated. Do you want to update it automatically?
 		-- 5 (data) Your version of the game is outdated. Please close the program to permit the automatic
 		--   update service of your distribution platform to bring the game up to date.
-		if not xkeys(request.cdkey) then
+		if not xkeys(request.cdkey, request.email) then
 			remote.log("info", "invalid cd key")
 			return 3
 		end
@@ -467,9 +468,9 @@ local auth_core = xclass
 		local message =
 		{
 			"%color(00DD00)%",
-			VERSION,
+			xversion.sich,
 			" powered by ",
-			_VERSION,
+			xversion.lua,
 			"%color(default)%"
 		}
 		xpackage(xcmd.USER_MESSAGE, 0, 0)

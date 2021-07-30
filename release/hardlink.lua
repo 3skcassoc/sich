@@ -1,6 +1,6 @@
 -- // xclass // --
 do
-	local call = function (class, ...)
+	local new = function (class, ...)
 		return setmetatable({__class = class}, class.__objmt):__create(...)
 	end
 	xclass = setmetatable(
@@ -14,7 +14,7 @@ do
 			class.__objmt = {__index = class}
 			return setmetatable(class, {
 				__index = class.__parent or xclass,
-				__call = call,
+				__call = new,
 			})
 		end,
 	})
@@ -82,7 +82,7 @@ do
 	end
 	local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
 	path = path:gsub("%%", "%%%%") .. "/%s.store"
-	log("debug", "path: %s", path)
+	log("debug", "path: %q", path)
 	xstore =
 	{
 		load = function (name, default)
@@ -360,7 +360,9 @@ do
 				return false
 			end
 			self.closed = true
-			self.sock:shutdown("both")
+			if self.sock.shutdown then
+				self.sock:shutdown("both")
+			end
 			return self.sock:close()
 		end,
 	},
@@ -385,6 +387,12 @@ do
 	})
 	wrapper.index_mt = {
 		__index = wrapper,
+		__tostring = function (self)
+			local sock = self.sock
+			local proto = tostring(sock):match("^[^{]+")
+			local _, ip, port = pcall(sock.getsockname, sock)
+			return ("%s:%s:%s"):format(proto or "?", ip or "?", port or "?")
+		end,
 	}
 	if package.config:sub(1, 1) == "\\" then
 		wrapper.connect = wrapper.connect_windows
@@ -393,12 +401,12 @@ do
 	end
 	local function append(thread, success, sock, set)
 		if not success then
-			xsocket.threads = xsocket.threads - 1
+			xsocket.thread_count = xsocket.thread_count - 1
 			log("error", "thread crashed: %s", debug.traceback(thread, sock))
 			return
 		end
 		if not sock then
-			xsocket.threads = xsocket.threads - 1
+			xsocket.thread_count = xsocket.thread_count - 1
 			return
 		end
 		if set[sock] then
@@ -439,7 +447,10 @@ do
 	end
 	xsocket =
 	{
-		threads = 0,
+		sendt = sendt,
+		recvt = recvt,
+		slept = slept,
+		thread_count = 0,
 		tcp = function ()
 			local sock, msg = (socket.tcp4 or socket.tcp)()
 			if not sock then
@@ -480,7 +491,7 @@ do
 					func(...)
 					return nil, nil
 				end)
-			xsocket.threads = xsocket.threads + 1
+			xsocket.thread_count = xsocket.thread_count + 1
 			return append(thread, coroutine.resume(thread, ...))
 		end,
 		loop = function ()
@@ -1234,6 +1245,8 @@ do
 			elseif atyp == 0x04 then
 				log("warn", "socks5: IPv6")
 				return
+			else
+				return
 			end
 			local port0, port1 = self:receive(2)
 			if not port0 then
@@ -1432,6 +1445,7 @@ do
 		end,
 		process = function (self)
 			log("info", "connected to %s:%s", self.host, self.port)
+			self.socket:setoption("keepalive", true)
 			while true do
 				local pack = self:receive()
 				if not pack then
@@ -1468,7 +1482,7 @@ do
 			local server_socket = assert(xsocket.tcp())
 			assert(server_socket:bind(host, port))
 			assert(server_socket:listen(32))
-			log("info", "listening at tcp:%s:%s", server_socket:getsockname())
+			log("info", "listening at %s", tostring(server_socket))
 			xsocket.spawn(
 				function ()
 					while true do
@@ -1485,7 +1499,7 @@ do
 			local socket = assert(xsocket.tcp())
 			assert(socket:bind(lhost, lport))
 			assert(socket:listen(32))
-			log("info", "listening at tcp:%s:%s", socket:getsockname())
+			log("info", "listening at %s", tostring(socket))
 			xsocket.spawn(
 				function ()
 					while true do
@@ -1507,7 +1521,7 @@ do
 			local socket = assert(xsocket.tcp())
 			assert(socket:bind(lhost, lport))
 			assert(socket:listen(32))
-			log("info", "listening at tcp:%s:%s", socket:getsockname())
+			log("info", "listening at %s", tostring(socket))
 			xsocket.spawn(
 				function ()
 					while true do

@@ -53,7 +53,7 @@ release("sich", {
 	"-- Cossacks 3 lua server",
 	"--",
 	"",
-	'VERSION = "' .. VERSION .. '"',
+	'SICH_VERSION = "' .. VERSION .. '"',
 	"",
 })
 

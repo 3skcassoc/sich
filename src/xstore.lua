@@ -61,7 +61,7 @@ end
 
 local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
 path = path:gsub("%%", "%%%%") .. "/%s.store"
-log("debug", "path: %s", path)
+log("debug", "path: %q", path)
 
 xstore =
 {

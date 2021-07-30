@@ -3,11 +3,11 @@
 -- Cossacks 3 lua server
 --
 
-VERSION = "Sich v0.2.7"
+SICH_VERSION = "Sich v0.2.9"
 
 -- // xclass // --
 do
-	local call = function (class, ...)
+	local new = function (class, ...)
 		return setmetatable({__class = class}, class.__objmt):__create(...)
 	end
 	xclass = setmetatable(
@@ -21,7 +21,7 @@ do
 			class.__objmt = {__index = class}
 			return setmetatable(class, {
 				__index = class.__parent or xclass,
-				__call = call,
+				__call = new,
 			})
 		end,
 	})
@@ -89,7 +89,7 @@ do
 	end
 	local path = arg and arg[0] and arg[0]:match("^(.+)[/\\][^/\\]+[/\\]?$") or "."
 	path = path:gsub("%%", "%%%%") .. "/%s.store"
-	log("debug", "path: %s", path)
+	log("debug", "path: %q", path)
 	xstore =
 	{
 		load = function (name, default)
@@ -207,6 +207,18 @@ do
 			__call = log_print,
 		})
 	end
+end
+
+-- // xversion // --
+do
+	local log = xlog("xversion")
+	xversion =
+	{
+		sich = SICH_VERSION or "Sich DEV",
+		lua = jit and jit.version or _VERSION,
+		socket = (require "socket")._VERSION,
+	}
+	log("info", "%s, %s, %s", xversion.sich, xversion.lua, xversion.socket)
 end
 
 -- // xconst // --
@@ -380,12 +392,12 @@ do
 				keys[key] = true
 			end
 		end
-		xkeys = function (cdkey)
+		xkeys = function (cdkey, email)
 			return keys[cdkey] and true or false
 		end
 	else
 		log("info", "disabled")
-		xkeys = function (cdkey)
+		xkeys = function (cdkey, email)
 			return true
 		end
 	end
@@ -1549,6 +1561,7 @@ do
 				return false
 			end
 			self[id] = false
+			self:save()
 			return true
 		end,
 		ban = function (self, email, banned)
@@ -1831,7 +1844,9 @@ do
 				return false
 			end
 			self.closed = true
-			self.sock:shutdown("both")
+			if self.sock.shutdown then
+				self.sock:shutdown("both")
+			end
 			return self.sock:close()
 		end,
 	},
@@ -1856,6 +1871,12 @@ do
 	})
 	wrapper.index_mt = {
 		__index = wrapper,
+		__tostring = function (self)
+			local sock = self.sock
+			local proto = tostring(sock):match("^[^{]+")
+			local _, ip, port = pcall(sock.getsockname, sock)
+			return ("%s:%s:%s"):format(proto or "?", ip or "?", port or "?")
+		end,
 	}
 	if package.config:sub(1, 1) == "\\" then
 		wrapper.connect = wrapper.connect_windows
@@ -1864,12 +1885,12 @@ do
 	end
 	local function append(thread, success, sock, set)
 		if not success then
-			xsocket.threads = xsocket.threads - 1
+			xsocket.thread_count = xsocket.thread_count - 1
 			log("error", "thread crashed: %s", debug.traceback(thread, sock))
 			return
 		end
 		if not sock then
-			xsocket.threads = xsocket.threads - 1
+			xsocket.thread_count = xsocket.thread_count - 1
 			return
 		end
 		if set[sock] then
@@ -1910,7 +1931,10 @@ do
 	end
 	xsocket =
 	{
-		threads = 0,
+		sendt = sendt,
+		recvt = recvt,
+		slept = slept,
+		thread_count = 0,
 		tcp = function ()
 			local sock, msg = (socket.tcp4 or socket.tcp)()
 			if not sock then
@@ -1951,7 +1975,7 @@ do
 					func(...)
 					return nil, nil
 				end)
-			xsocket.threads = xsocket.threads + 1
+			xsocket.thread_count = xsocket.thread_count + 1
 			return append(thread, coroutine.resume(thread, ...))
 		end,
 		loop = function ()
@@ -2660,7 +2684,7 @@ do
 			-- 4 (core) Your version is outdated. Do you want to update it automatically?
 			-- 5 (data) Your version of the game is outdated. Please close the program to permit the automatic
 			--   update service of your distribution platform to bring the game up to date.
-			if not xkeys(request.cdkey) then
+			if not xkeys(request.cdkey, request.email) then
 				remote.log("info", "invalid cd key")
 				return 3
 			end
@@ -2740,9 +2764,9 @@ do
 			local message =
 			{
 				"%color(00DD00)%",
-				VERSION,
+				xversion.sich,
 				" powered by ",
-				_VERSION,
+				xversion.lua,
 				"%color(default)%"
 			}
 			xpackage(xcmd.USER_MESSAGE, 0, 0)
@@ -2831,13 +2855,24 @@ do
 		end
 		return nil, nil
 	end
-	local function find_remote(id)
+	local function find_client(id)
 		for _, server in pairs(servers) do
 			if server.clients[id] then
 				return server.clients[id]
 			end
 		end
 		return nil
+	end
+	local function find_online(user)
+		local id, account = find_user(user)
+		if not id then
+			return nil, ("user not found: %s"):format(user)
+		end
+		local client = find_client(id)
+		if not client then
+			return nil, ("client is offline: #%d %s"):format(id, account.nickname)
+		end
+		return client
 	end
 	xadmin = xclass
 	{
@@ -2859,7 +2894,7 @@ do
 			self.host, self.port = socket:getpeername()
 			self:log("info", "connected")
 			self:table_begin()
-			self:table_row(("%s powered by %s"):format(VERSION, _VERSION))
+			self:table_row(("%s powered by %s"):format(xversion.sich, xversion.lua))
 			self:table_end()
 			self:start()
 			socket:close()
@@ -2888,13 +2923,15 @@ do
 						line[#line + 1] = char
 					end
 				end
-				self:log("debug", "exec: %s", line)
-				local words = {}
-				for word in line:gmatch("[%S]+") do
-					table.insert(words, word)
-				end
-				if words[1] then
-					self:process(table.remove(words, 1), words)
+				if #line > 0 then
+					self:log("debug", 'exec: "%s"', line)
+					local words = {}
+					for word in line:gmatch("[%S]+") do
+						table.insert(words, word)
+					end
+					if words[1] then
+						self:process(table.remove(words, 1), words)
+					end
 				end
 			end
 		end,
@@ -2976,9 +3013,6 @@ do
 			return self.socket:send(table.concat(buffer))
 		end,
 	}
-	xadmin:command("exit", "", "close this console", 0, function (self)
-		return self.socket:close()
-	end)
 	xadmin:command("info", "", "server info", 0, function (self)
 		self:table_begin()
 		local count = 0
@@ -2993,7 +3027,7 @@ do
 			count = count + clients_count
 		end
 		self:table_row("online users", count)
-		self:table_row("running threads", xsocket.threads)
+		self:table_row("running threads", xsocket.thread_count)
 		return self:table_end()
 	end)
 	xadmin:command("users", "", "list online users", 0, function (self)
@@ -3055,7 +3089,7 @@ do
 		end
 		return self:table_end()
 	end)
-	xadmin:command("update", "<user> <key> <value>", "update register", 3, function (self, user, key, value)
+	xadmin:command("update", "<user> <key> <value>", "update register", 3, function (self, user, key, ...)
 		local id, account = find_user(user)
 		if not id then
 			return self:writeln("user not found")
@@ -3063,6 +3097,7 @@ do
 		if account[key] == nil then
 			return self:writeln("key not exist")
 		end
+		local value = table.concat({...}, " ")
 		local tp = type(account[key])
 		if tp == "boolean" then
 			value = value:lower()
@@ -3079,7 +3114,7 @@ do
 				return self:writeln("not a numeric value")
 			end
 		end
-		local client = find_remote(id)
+		local client = find_client(id)
 		if client then
 			client[key] = value
 			register:update(client)
@@ -3089,16 +3124,12 @@ do
 		end
 	end)
 	xadmin:command("kick", "<user>", "disconnect online user", 1, function (self, user)
-		local id, account = find_user(user)
-		if not id then
-			return self:writeln("user not found")
+		local client, msg = find_online(user)
+		if not client then
+			return self:writeln(msg)
 		end
-		local remote = find_remote(id)
-		if not remote then
-			return self:writeln("user is offline: #%d %s", id, account.nickname)
-		end
-		remote.socket:close()
-		return self:writeln("kicked: #%d %s", id, account.nickname)
+		client.socket:close()
+		return self:writeln("kicked: #%d %s", client.id, client.nickname)
 	end)
 	xadmin:command("ban", "<user>", "disable user account", 1, function (self, user)
 		local id, account = find_user(user)
@@ -3114,18 +3145,92 @@ do
 		end
 		return self:writeln("account is unbanned: #%d %s", id, account.nickname)
 	end)
+	xadmin:command("message", "<user> <text>", "send message", 2, function (self, user, ...)
+		local client, msg = find_online(user)
+		if not client then
+			return self:writeln(msg)
+		end
+		local text = table.concat({...}, " ")
+		if not client.session then
+			xpackage(xcmd.USER_MESSAGE, 0, client.id)
+				:write("s", text)
+				:dispatch(client)
+		elseif not client.session.locked then
+			xpackage(xcmd.USER_SESSION_MSG, 0, client.id)
+				:write("s", text)
+				:session_dispatch(client)
+		else
+			xpackage(xcmd.USER_SESSION_MSG, 0, client.id)
+				:write("s", "0|en\7" .. text)
+				:session_dispatch(client)
+		end
+	end)
+	xadmin:command("traceback", "", "show traceback for sockets", 0, function (self, user)
+		local sock_clients = {}
+		for _, server in pairs(servers) do
+			for _, client in pairs(server.clients) do
+				sock_clients[client.socket.sock] = client
+			end
+		end
+		local sets =
+		{
+			{"sendt", xsocket.sendt},
+			{"recvt", xsocket.recvt},
+			{"slept", xsocket.slept},
+		}
+		self:table_begin("client", "set", "socket", "local addr", "remote addr", "traceback")
+		for _, pair in ipairs(sets) do
+			local set_name, set = unpack(pair)
+			for _, sock in ipairs(set) do
+				local client_nickname = ""
+				if sock_clients[sock] then
+					client_nickname = sock_clients[sock].nickname
+				end
+				local sock_str = tostring(sock):match("^[^:]+")
+				local local_addr = ""
+				local ok, ip, port = pcall(sock.getsockname, sock)
+				if ok and ip then
+					local_addr = ("%s:%s"):format(ip, port)
+				end
+				local remote_addr = ""
+				local ok, ip, port = pcall(sock.getpeername, sock)
+				if ok and ip then
+					remote_addr = ("%s:%s"):format(ip, port)
+				end
+				for thread_index, thread in ipairs(set[sock].threads) do
+					local first_line = (thread_index == 1)
+					local traceback = debug.traceback(thread, tostring(thread), 1)
+					for line in traceback:gmatch("[^\n]+") do
+						if line:match("^\t") then
+							line = "  " .. line:match("^%s*(.-)%s*$")
+						end
+						if first_line then
+							first_line = false
+							self:table_row(client_nickname, set_name, sock_str, local_addr, remote_addr, line)
+						else
+							self:table_row("", "", "", "", "", line)
+						end
+					end
+				end
+			end
+		end
+		return self:table_end()
+	end)
 	xadmin:command("stop", "", "stop server", 0, function (self)
 		return os.exit()
 	end)
 	xadmin:command("help", "", "print available commands", 0, function (self, cmd)
-		if cmd and self.commands[cmd] then
-			return self:writeln("%s", self.commands[cmd].description)
-		end
 		self:table_begin()
+		local pattern = cmd and ("^" .. cmd:gsub("%W", "%%%1"))
 		for _, command in ipairs(self.commands) do
-			self:table_row(command.name .. " " .. command.args, command.description)
+			if not pattern or command.name:match(pattern) then
+				self:table_row(command.name .. " " .. command.args, command.description)
+			end
 		end
 		return self:table_end()
+	end)
+	xadmin:command("exit", "", "close this console", 0, function (self)
+		return self.socket:close()
 	end)
 	if not xconfig.admin then
 		log("info", "disabled")
@@ -3134,7 +3239,7 @@ do
 		local server_socket = assert(xsocket.tcp())
 		assert(server_socket:bind(host, port))
 		assert(server_socket:listen(32))
-		log("info", "listening at tcp:%s:%s", server_socket:getsockname())
+		log("info", "listening at %s", tostring(server_socket))
 		xsocket.spawn(
 			function ()
 				while true do
@@ -3160,7 +3265,7 @@ do
 		end
 		local echo_socket = assert(xsocket.udp())
 		assert(echo_socket:setsockname(host or "*", port or 31523))
-		log("info", "listening at udp:%s:%s", echo_socket:getsockname())
+		log("info", "listening at %s", tostring(echo_socket))
 		xsocket.spawn(function ()
 			while true do
 				local msg, ip, port = echo_socket:receivefrom()
@@ -3168,7 +3273,7 @@ do
 					return log("warn", "closed")
 				end
 				log("debug", "got %q from %s:%s", msg, ip, port)
-				echo_socket:sendto(title or VERSION, ip, port)
+				echo_socket:sendto(title or xversion.sich, ip, port)
 			end
 		end)
 	end
@@ -3177,23 +3282,18 @@ end
 -- // sich // --
 do
 	local log = xlog("sich")
-	VERSION = VERSION or "Sich DEV"
-	if jit then
-		_VERSION = jit.version
-	end
 	local host = xconfig.host or "*"
 	local port = xconfig.port or 31523
 	local server_socket = assert(xsocket.tcp())
 	assert(server_socket:bind(host, port))
 	assert(server_socket:listen(32))
-	log("info", "listening at tcp:%s:%s", server_socket:getsockname())
+	log("info", "listening at %s", tostring(server_socket))
 	xsocket.spawn(
 		function ()
 			while true do
 				xsocket.spawn(xserver, assert(server_socket:accept()))
 			end
 		end)
-	log("info", "%s, %s", VERSION, _VERSION)
 	xsocket.loop()
 end
 
